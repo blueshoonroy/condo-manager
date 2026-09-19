@@ -1,0 +1,1 @@
+<h1>Your sign-in code</h1><p>Use this code to sign in to the 1262 Bryn Mawr Association portal:</p><p style="font-size:32px;letter-spacing:6px"><strong>{{ $code }}</strong></p><p>This code expires in 10 minutes and can be used once. If you didn’t request it, you can ignore this email.</p>

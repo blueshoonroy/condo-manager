@@ -1,0 +1,3 @@
+<div class="table-wrap"><table><thead><tr><th>Date</th><th>Description</th><th>Type</th><th class="numeric">Amount</th></tr></thead><tbody>
+@forelse($transactions as $transaction)<tr><td class="nowrap">{{ \Carbon\Carbon::parse($transaction->posted_on)->format('M j, Y') }}</td><td>{{ $transaction->description }}</td><td><span class="badge {{ $transaction->amount_cents > 0 ? 'paid' : 'neutral' }}">{{ $transaction->amount_cents > 0 ? 'Credit' : 'Debit' }}</span></td><td class="numeric {{ $transaction->amount_cents > 0 ? 'positive' : '' }}">{{ \App\Support\Money::format($transaction->amount_cents) }}</td></tr>@empty<tr><td colspan="4" class="empty">No bank transactions to show.</td></tr>@endforelse
+</tbody></table></div>

@@ -1,0 +1,192 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Household;
+use App\Models\Invoice;
+use App\Models\User;
+use App\Services\BillingService;
+use App\Services\CsvImporter;
+use App\Services\PaymentService;
+use App\Support\Audit;
+use App\Support\Money;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\ValidationException;
+use Illuminate\View\View;
+
+class AdminController extends Controller
+{
+    public function index(): View
+    {
+        return view('admin.index', [
+            'households' => Household::where('active', true)->with('residents')->get(),
+            'imports' => DB::table('import_batches')->orderByDesc('id')->limit(15)->get(),
+            'events' => DB::table('audit_events')->orderByDesc('id')->limit(20)->get(),
+            'payments' => DB::table('payments')->join('households', 'households.id', '=', 'payments.household_id')->select('payments.*', 'households.client_name')->orderByDesc('payments.id')->limit(30)->get(),
+            'rates' => DB::table('dues_rates')->orderBy('unit_id')->orderByDesc('effective_on')->get(),
+            'deliveries' => DB::table('invoice_deliveries')->join('invoices', 'invoices.id', '=', 'invoice_deliveries.invoice_id')->select('invoice_deliveries.*', 'invoices.number')->orderByDesc('invoice_deliveries.id')->limit(25)->get(),
+        ]);
+    }
+
+    public function preview(Request $request, CsvImporter $importer): RedirectResponse
+    {
+        $request->validate(['kind' => 'required|in:bank,invoices', 'file' => 'required|file|max:5120|mimes:csv,txt']);
+        $path = $request->file('file')->store('imports', 'local');
+        try {
+            $result = $importer->inspect(Storage::disk('local')->path($path), $request->kind);
+        } catch (\Throwable $error) {
+            Storage::disk('local')->delete($path);
+            throw $error;
+        }
+        $id = DB::table('import_batches')->insertGetId([
+            'kind' => $request->kind, 'filename' => basename($request->file('file')->getClientOriginalName()),
+            'checksum' => hash_file('sha256', Storage::disk('local')->path($path)), 'path' => $path,
+            'summary' => json_encode($result['summary']), 'user_id' => $request->user()->id, 'status' => 'preview', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        return redirect()->route('admin.import', $id);
+    }
+
+    public function import(int $batch, CsvImporter $importer): View
+    {
+        $batch = DB::table('import_batches')->where('id', $batch)->first();
+        abort_unless($batch && $batch->path, 404);
+
+        return view('admin.import', ['batch' => $batch, 'result' => $importer->inspect(Storage::disk('local')->path($batch->path), $batch->kind)]);
+    }
+
+    public function commit(int $batch, CsvImporter $importer): RedirectResponse
+    {
+        $record = DB::table('import_batches')->where('id', $batch)->first();
+        abort_unless($record && $record->path, 404);
+        $importer->commit($batch, Storage::disk('local')->path($record->path));
+
+        return redirect()->route('admin')->with('status', 'Import applied successfully.');
+    }
+
+    public function checkpoint(Request $request): RedirectResponse
+    {
+        $data = $request->validate(['as_of' => 'required|date_format:Y-m-d|before_or_equal:today', 'amount' => ['required', 'regex:/^-?\d{1,8}(\.\d{1,2})?$/'], 'note' => 'required|string|max:1000']);
+        DB::transaction(function () use ($data, $request) {
+            DB::table('balance_checkpoints')->updateOrInsert(['as_of' => $data['as_of']], ['amount_cents' => Money::cents($data['amount']), 'note' => $data['note'], 'user_id' => $request->user()->id, 'created_at' => now(), 'updated_at' => now()]);
+            Audit::record('balance.verified', $data['as_of'], ['amount_cents' => Money::cents($data['amount']), 'note' => $data['note']]);
+        });
+
+        return back()->with('status', 'Verified end-of-day balance saved.');
+    }
+
+    public function paymentForm(int $household): View
+    {
+        $household = Household::findOrFail($household);
+        $invoices = Invoice::where('household_id', $household->id)->orderBy('due_on')->get()->filter(fn ($i) => $i->balanceCents() > 0);
+        $credits = DB::table('bank_transactions')->where('amount_cents', '>', 0)->whereNotIn('id', DB::table('payments')->whereNotNull('bank_transaction_id')->select('bank_transaction_id'))->orderByDesc('posted_on')->get();
+
+        return view('admin.payment', compact('household', 'invoices', 'credits'));
+    }
+
+    public function payment(Request $request, PaymentService $service): RedirectResponse
+    {
+        $data = $request->validate([
+            'household_id' => 'required|exists:households,id', 'request_key' => 'required|uuid', 'bank_transaction_id' => 'nullable|exists:bank_transactions,id',
+            'amount' => ['required', 'regex:/^\d{1,8}(\.\d{1,2})?$/'], 'paid_on' => 'required|date_format:Y-m-d|before_or_equal:today', 'note' => 'required|string|max:1000',
+            'allocations' => 'nullable|array', 'allocations.*' => ['nullable', 'regex:/^\d{1,8}(\.\d{1,2})?$/'],
+        ]);
+        $data['amount_cents'] = Money::cents($data['amount']);
+        $data['allocations'] = array_map(fn ($amount) => $amount ? Money::cents($amount) : 0, $data['allocations'] ?? []);
+        $service->record($data, $request->user()->id);
+
+        return redirect()->route('admin')->with('status', 'Payment recorded. Any unallocated amount remains household credit.');
+    }
+
+    public function allocationForm(int $payment): View
+    {
+        $payment = DB::table('payments')->where('id', $payment)->whereNull('reversed_at')->first();
+        abort_unless($payment, 404);
+        $invoices = Invoice::where('household_id', $payment->household_id)->whereNull('void_reason')->orderBy('due_on')->get();
+        $allocations = DB::table('payment_allocations')->where('payment_id', $payment->id)->pluck('amount_cents', 'invoice_id');
+
+        return view('admin.allocations', compact('payment', 'invoices', 'allocations'));
+    }
+
+    public function allocate(Request $request, int $payment, PaymentService $service): RedirectResponse
+    {
+        $data = $request->validate(['allocations' => 'required|array', 'allocations.*' => ['nullable', 'regex:/^\d{1,8}(\.\d{1,2})?$/']]);
+        $service->allocate($payment, array_map(fn ($amount) => $amount ? Money::cents($amount) : 0, $data['allocations']));
+
+        return redirect()->route('admin')->with('status', 'Payment allocations updated.');
+    }
+
+    public function reverse(Request $request, int $payment, PaymentService $service): RedirectResponse
+    {
+        $request->validate(['reason' => 'required|string|min:5|max:1000']);
+        $service->reverse($payment, $request->reason);
+
+        return back()->with('status', 'Payment reversed; invoice balances restored.');
+    }
+
+    public function assessment(Request $request, BillingService $billing): RedirectResponse
+    {
+        $data = $request->validate(['household_id' => 'required|exists:households,id', 'title' => 'required|string|max:200', 'amount' => ['required', 'regex:/^\d{1,8}(\.\d{1,2})?$/'], 'due_on' => 'required|date_format:Y-m-d|after_or_equal:today', 'request_key' => 'required|uuid']);
+        $amount = Money::cents($data['amount']);
+        if ($amount < 1) {
+            throw ValidationException::withMessages(['amount' => 'Enter a positive amount.']);
+        }
+        $household = Household::where('active', true)->findOrFail($data['household_id']);
+        $invoice = $billing->assessment($household, $data['title'], $amount, $data['due_on'], $data['request_key']);
+
+        return redirect()->route('invoice', $invoice)->with('status', 'Special assessment created.');
+    }
+
+    public function void(Request $request, int $invoice): RedirectResponse
+    {
+        $request->validate(['reason' => 'required|string|min:5|max:1000']);
+        DB::transaction(function () use ($request, $invoice) {
+            DB::table('units')->orderBy('id')->lockForUpdate()->get();
+            $record = Invoice::whereKey($invoice)->lockForUpdate()->firstOrFail();
+            if ($record->historical_paid_cents > 0 || $record->allocatedCents() > 0) {
+                throw ValidationException::withMessages(['invoice' => 'Reverse payments before voiding. Imported paid history must be corrected through its source.']);
+            }
+            $record->update(['void_reason' => $request->reason]);
+            Audit::record('invoice.voided', 'invoice:'.$invoice, ['reason' => $request->reason]);
+        });
+
+        return back()->with('status', 'Invoice voided.');
+    }
+
+    public function resident(Request $request, User $user): RedirectResponse
+    {
+        $request->merge(['email' => strtolower(trim((string) $request->input('email')))]);
+        $data = $request->validate(['name' => 'required|string|max:255', 'email' => 'required|email|max:254|unique:users,email,'.$user->id, 'phone' => 'nullable|string|max:40', 'active' => 'required|boolean']);
+        if ($user->is_admin && ! $data['active']) {
+            throw ValidationException::withMessages(['active' => 'The sole administrator cannot be disabled.']);
+        }
+        DB::transaction(function () use ($user, $data) {
+            $data['email'] = strtolower($data['email']);
+            $user->update($data);
+            DB::table('sessions')->where('user_id', $user->id)->delete();
+            DB::table('login_challenges')->where('user_id', $user->id)->update(['used_at' => now()]);
+            Audit::record('resident.updated', 'user:'.$user->id);
+        });
+
+        return back()->with('status', 'Resident updated and existing sessions revoked.');
+    }
+
+    public function dues(Request $request): RedirectResponse
+    {
+        $data = $request->validate(['unit_id' => 'required|exists:units,id', 'effective_on' => 'required|date_format:Y-m-d|after_or_equal:today', 'amount' => ['required', 'regex:/^\d{1,8}(\.\d{1,2})?$/']]);
+        $amount = Money::cents($data['amount']);
+        if ($amount < 1) {
+            throw ValidationException::withMessages(['amount' => 'Dues must be positive.']);
+        }
+        DB::transaction(function () use ($data, $amount) {
+            DB::table('units')->orderBy('id')->lockForUpdate()->get();
+            DB::table('dues_rates')->updateOrInsert(['unit_id' => $data['unit_id'], 'effective_on' => $data['effective_on']], ['amount_cents' => $amount, 'created_at' => now(), 'updated_at' => now()]);
+            Audit::record('dues.updated', 'unit:'.$data['unit_id'], ['effective_on' => $data['effective_on'], 'amount_cents' => $amount]);
+        });
+
+        return back()->with('status', 'Dues rate saved. Existing invoices retain their original amounts.');
+    }
+}

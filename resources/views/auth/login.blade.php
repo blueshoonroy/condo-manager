@@ -1,0 +1,5 @@
+@extends('layouts.app')
+@section('title', 'Sign in')
+@section('content')
+<div class="login-wrap"><section class="login-story"><span class="eyebrow">1262 BRYN MAWR ASSOCIATION</span><div class="building" aria-hidden="true"><div class="roof"></div><div class="windows">▥ ▥ ▥<br>▥ ▥ ▥<br>▥ ▥ ▥</div><div class="door"></div></div><h1>Your home.<br>Your community.</h1><p>A shared place for the finances, documents,<br>and people that keep our building running.</p><span class="small">1262 W. Bryn Mawr Ave · Chicago</span></section><section class="login-form"><span class="pill">RESIDENT PORTAL</span><h2>Welcome home.</h2><p class="muted">Sign in with your resident email. We’ll send you a one-time code—no password needed.</p><form method="post" action="{{ route('login.send') }}">@csrf<label>Email address<input type="email" name="email" value="{{ old('email') }}" placeholder="you@example.com" autocomplete="email" required autofocus></label><button class="button full">Send sign-in code <span>→</span></button></form><p class="small muted">Access is available to registered residents.<br>Contact Roy if you need your email updated.</p></section></div>
+@endsection

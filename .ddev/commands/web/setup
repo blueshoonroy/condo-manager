@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+## Description: Install dependencies, build assets and migrate the local database
+## Usage: setup
+## Example: ddev setup
+set -euo pipefail
+composer install --no-interaction --prefer-dist
+# Generate a key only if the current environment does not already have one.
+if ! grep -Eq '^APP_KEY="?base64:' .env; then
+    php artisan key:generate --force --no-interaction
+fi
+npm ci --ignore-scripts
+npm run build
+php artisan migrate --force --no-interaction
