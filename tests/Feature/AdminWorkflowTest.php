@@ -23,6 +23,10 @@ class AdminWorkflowTest extends TestCase
         $this->actingAs($admin)->post('/admin/imports', ['kind' => 'bank', 'file' => UploadedFile::fake()->createWithContent('bank.csv', $csv)])->assertRedirect();
         $this->assertDatabaseCount('bank_transactions', 0);
         $batch = DB::table('import_batches')->first();
+        $this->assertNull($batch->path);
+        $this->assertSame($csv, base64_decode($batch->source_base64));
+        // A new replica has none of the previous request's local files.
+        Storage::fake('local');
         $this->get('/admin/imports/'.$batch->id)->assertOk()->assertSee('Apply validated import');
         $this->post('/admin/imports/'.$batch->id)->assertRedirect('/admin');
         $this->assertDatabaseCount('bank_transactions', 1);

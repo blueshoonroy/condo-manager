@@ -34,16 +34,12 @@ class AdminController extends Controller
     public function preview(Request $request, CsvImporter $importer): RedirectResponse
     {
         $request->validate(['kind' => 'required|in:bank,invoices', 'file' => 'required|file|max:5120|mimes:csv,txt']);
-        $path = $request->file('file')->store('imports', 'local');
-        try {
-            $result = $importer->inspect(Storage::disk('local')->path($path), $request->kind);
-        } catch (\Throwable $error) {
-            Storage::disk('local')->delete($path);
-            throw $error;
-        }
+        $path = $request->file('file')->getRealPath();
+        $result = $importer->inspect($path, $request->kind);
+        $contents = file_get_contents($path);
         $id = DB::table('import_batches')->insertGetId([
             'kind' => $request->kind, 'filename' => basename($request->file('file')->getClientOriginalName()),
-            'checksum' => hash_file('sha256', Storage::disk('local')->path($path)), 'path' => $path,
+            'checksum' => hash('sha256', $contents), 'source_base64' => base64_encode($contents),
             'summary' => json_encode($result['summary']), 'user_id' => $request->user()->id, 'status' => 'preview', 'created_at' => now(), 'updated_at' => now(),
         ]);
 
@@ -53,18 +49,43 @@ class AdminController extends Controller
     public function import(int $batch, CsvImporter $importer): View
     {
         $batch = DB::table('import_batches')->where('id', $batch)->first();
-        abort_unless($batch && $batch->path, 404);
+        abort_unless($batch, 404);
 
-        return view('admin.import', ['batch' => $batch, 'result' => $importer->inspect(Storage::disk('local')->path($batch->path), $batch->kind)]);
+        return view('admin.import', ['batch' => $batch, 'result' => $this->withImportFile($batch, fn ($path) => $importer->inspect($path, $batch->kind))]);
     }
 
     public function commit(int $batch, CsvImporter $importer): RedirectResponse
     {
         $record = DB::table('import_batches')->where('id', $batch)->first();
-        abort_unless($record && $record->path, 404);
-        $importer->commit($batch, Storage::disk('local')->path($record->path));
+        abort_unless($record, 404);
+        $this->withImportFile($record, fn ($path) => $importer->commit($batch, $path));
 
         return redirect()->route('admin')->with('status', 'Import applied successfully.');
+    }
+
+    private function withImportFile(object $batch, \Closure $callback): mixed
+    {
+        if ($batch->source_base64 === null) {
+            abort_unless($batch->path && Storage::disk('local')->exists($batch->path), 404);
+
+            return $callback(Storage::disk('local')->path($batch->path));
+        }
+
+        $contents = base64_decode($batch->source_base64, true);
+        abort_if($contents === false || ! hash_equals($batch->checksum, hash('sha256', $contents)), 500, 'Import source failed integrity verification.');
+        $handle = tmpfile();
+        if ($handle === false) {
+            throw new \RuntimeException('Unable to create temporary import file.');
+        }
+        try {
+            if (fwrite($handle, $contents) !== strlen($contents)) {
+                throw new \RuntimeException('Unable to write temporary import file.');
+            }
+
+            return $callback(stream_get_meta_data($handle)['uri']);
+        } finally {
+            fclose($handle);
+        }
     }
 
     public function checkpoint(Request $request): RedirectResponse

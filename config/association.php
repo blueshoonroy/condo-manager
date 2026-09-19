@@ -1,6 +1,7 @@
 <?php
 
 return [
+    'initial_roster_base64' => env('ASSOCIATION_INITIAL_ROSTER_BASE64'),
     'name' => '1262 Bryn Mawr Association',
     'address' => '1262 W. Bryn Mawr Ave, Chicago, IL 60660',
     'timezone' => 'America/Chicago',

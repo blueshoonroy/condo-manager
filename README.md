@@ -45,10 +45,10 @@ Tests use isolated in-memory SQLite and fake email delivery. The actual local en
 
 ## Production
 
-See [DEPLOYMENT.md](DEPLOYMENT.md) for Forge environment variables, private data initialization, scheduler, queue worker, backups, and launch steps. [deploy/forge.sh](deploy/forge.sh) is the deployment build/migration segment to insert into the site's Forge script after its checkout step.
+See [DEPLOYMENT.md](DEPLOYMENT.md) for Laravel Cloud configuration, environment variables, private initialization, scheduler, queue worker, backups, and launch steps. Set the Cloud build command to `bash deploy/cloud-build.sh` and the deploy command to `bash deploy/cloud-deploy.sh`.
 
 Production needs a verified Resend sender, the bank balance checkpoint, and final billing settings. Set PHP 8.4+ and Node 22.12+. Use `/public` as the web root. Do not run local setup commands or initialization on every deployment.
 
 First release boundaries: manual bank imports and payment confirmation; no online card/ACH checkout, automatic bank feed, automatic refunds, reminder cadence, invoice PDF originals, or ownership-transfer wizard. Invoice details are printable. Historical household mappings remain intact.
 
-Local verification: 27 automated tests cover resident/admin authorization, passwordless login, import previews and conflicts, billing retries and cutover overlap, payments/credits/reversals, balance calculations, and email retry behavior. Browser checks also exercised login via Mailpit, authenticated pages, a 390px mobile viewport, and logout.
+Local verification: 29 automated tests cover resident/admin authorization, passwordless login, import previews and conflicts, billing retries and cutover overlap, payments/credits/reversals, balance calculations, and email retry behavior. Browser checks also exercised login via Mailpit, authenticated pages, a 390px mobile viewport, and logout.

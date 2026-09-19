@@ -11,7 +11,7 @@ use Illuminate\Support\Str;
 
 class InitializeAssociation extends Command
 {
-    protected $signature = 'association:initialize {roster : Path to private resident JSON}';
+    protected $signature = 'association:initialize {roster? : Path to private resident JSON} {--from-env : Read ASSOCIATION_INITIAL_ROSTER_BASE64 instead of a file}';
 
     protected $description = 'Initialize units and resident access from a private roster (once only)';
 
@@ -22,7 +22,21 @@ class InitializeAssociation extends Command
 
             return self::FAILURE;
         }
-        $roster = json_decode(file_get_contents($this->argument('roster')), true, flags: JSON_THROW_ON_ERROR);
+        if ($this->option('from-env')) {
+            $json = base64_decode((string) config('association.initial_roster_base64'), true);
+        } elseif ($this->argument('roster') && is_readable($this->argument('roster'))) {
+            $json = file_get_contents($this->argument('roster'));
+        } else {
+            $this->error('Provide a readable roster path or use --from-env.');
+
+            return self::FAILURE;
+        }
+        if (! $json) {
+            $this->error('The initial roster is missing or invalid.');
+
+            return self::FAILURE;
+        }
+        $roster = json_decode($json, true, flags: JSON_THROW_ON_ERROR);
         Validator::make(['roster' => $roster], [
             'roster' => 'required|array|min:1', 'roster.*.unit' => 'required|integer|between:1,5',
             'roster.*.dues_cents' => 'required|integer|min:1', 'roster.*.client_name' => 'required|string|max:255|distinct',
