@@ -1,5 +1,7 @@
 # Laravel Cloud deployment
 
+Production is deployed at **https://1262bryn.com** in `us-east-1`, using the existing Cloud environment's PHP 8.5 and Node 24 selections, managed MySQL 8.4, one 512 MB App instance and one database queue worker. The scheduler is enabled; daily database snapshots retain seven days. Initial data is loaded (133 invoices, 282 transactions), and recurring billing/invoice email remain disabled pending cutover. The following instructions also serve as a rebuild guide.
+
 Create a production application for GitHub repository `blueshoonroy/condo-manager`, branch `main`, on [Laravel Cloud](https://cloud.laravel.com). Select PHP 8.4 and Node 22.12+ (or Node 24), using the standard PHP runtime. Start with one small App instance and a dedicated managed MySQL database in the same region, preferably the nearest available US region to Chicago. Attach the database as the default. Review Cloud's monthly resource estimate before creating resources.
 
 Enable push-to-deploy from `main`. Disable the previous Forge site's auto-deploy if enabled.
@@ -91,4 +93,4 @@ Verify `/up`, Roy's login email, admin access, household isolation, import total
 
 The development dependency `laravel/cloud-cli` is installed. On a machine with PHP 8.3+ and the sockets extension, run `php vendor/bin/cloud auth -n` for browser authorization. Alternatively configure `LARAVEL_CLOUD_TOKEN` securely in your shell; do not send it in chat. Discover commands with `php vendor/bin/cloud -h`. DDEV can run `ddev exec vendor/bin/cloud`, but its browser callback is inside the container; use token authentication there unless port forwarding is configured.
 
-Cloud account authorization is required. Preparing these files does not create or deploy a Cloud application.
+On this Windows installation, use `php -d extension=sockets vendor/bin/cloud` to enable the sockets extension for the CLI without modifying the system PHP configuration. Cloud credentials are stored outside the repository.

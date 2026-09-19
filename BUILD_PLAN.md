@@ -4,15 +4,15 @@ Planning baseline: September 19, 2026. Address: 1262 W. Bryn Mawr Ave, Chicago, 
 
 ## Implementation status
 
-The first local implementation is complete: Laravel portal, passwordless codes, household access, initial imports, recurring dues, assessments, payment allocation/reversal, bank checkpoints, directory/documents, administrative imports and audit history. DDEV runs PHP 8.4 and MySQL 8.0 with Mailpit for local email. Deployment instructions and environment variables are in DEPLOYMENT.md. Data has been initialized locally; production remains to be configured and deployed. Recurring billing and invoice email delivery remain disabled pending final cutover settings.
+The first local implementation is complete: Laravel portal, passwordless codes, household access, initial imports, recurring dues, assessments, payment allocation/reversal, bank checkpoints, directory/documents, administrative imports and audit history. DDEV runs PHP 8.4 and MySQL 8.0 with Mailpit for local email. Deployment instructions and environment variables are in DEPLOYMENT.md. Production is deployed on Laravel Cloud at https://1262bryn.com with the resident roster, 133 invoices and 282 bank transactions imported. Recurring billing and invoice email delivery remain disabled pending final cutover settings.
 
 First-release limits and operational behavior are documented in README.md. Future work includes an ownership-transfer wizard, automated reminder cadence, and richer bank reconciliation; original FreshBooks PDFs are not present in the supplied export.
 
 ## Recommended implementation
 
-Build a mobile-friendly Laravel application with Blade templates, Tailwind CSS, and Resend for passwordless email login. Keep the application and administrative screens in one codebase. Deploy a dedicated site on the user's existing DigitalOcean server through Laravel Forge, with HTTPS, a dedicated database and database user, deployment migrations, health checks, backups, and private environment configuration. Inspect the server's existing database engine and supported PHP version before finalizing dependencies; use its existing MySQL or PostgreSQL service where suitable.
+Build a mobile-friendly Laravel application with Blade templates, Tailwind CSS, and Resend for passwordless email login. Keep the application and administrative screens in one codebase. Deploy to Laravel Cloud with HTTPS, a dedicated managed MySQL database, deployment migrations, health checks, backups, and private environment configuration.
 
-Updated hosting decision: Laravel Cloud with PHP 8.4 and managed MySQL. This supersedes the earlier Forge deployment plan below; use DEPLOYMENT.md for current launch steps. The user owns 1262bryn.com and has selected it for launch. Configure HTTPS for this domain and verify a sending subdomain such as mail.1262bryn.com in Resend. Identify the target Forge server, available capacity, deployment access, and DNS provider before deployment. Configure the application's scheduler and queue worker, isolate its files and database from other hosted applications, and establish off-server backups. No hosting changes or email messages have been made as part of planning.
+Confirmed hosting: Laravel Cloud with PHP 8.5, Node 24 and managed MySQL 8.4. Local DDEV remains on PHP 8.4. Use DEPLOYMENT.md for current operational steps. The user owns 1262bryn.com and has selected it for launch. Configure HTTPS for this domain and verify a sending subdomain such as mail.1262bryn.com in Resend. Connect the GitHub repository to Cloud and deploy main. Configure the application's scheduler and queue worker, isolate its files and database from other hosted applications, and establish off-server backups. Production resources and domain are configured; email delivery must be verified before inviting residents.
 
 ## First release
 
@@ -77,7 +77,7 @@ Association, units, residents, dated unit memberships, effective-dated dues, ext
 1. Foundation: scaffold the application, migrations, private seed data, authentication, roles, and responsive navigation. Verify code expiry, replay protection, attempt limits, and resident/admin authorization.
 2. Imports and invoicing: implement both CSV pipelines, client mapping, checkpoint calculations, recurring invoice generation, special assessments, payment allocation, and notification jobs. Verify all source rows are accounted for, repeated uploads and billing runs are harmless, ambiguous records require review, and monetary calculations and payment reversals are exact.
 3. Resident experience: dashboard, invoices, bank activity, directory, and Drive link. Verify both residents in a household see authorized invoices and direct requests cannot retrieve another household's invoices. Check mobile layout, keyboard use, empty states, and freshness labels.
-4. Administration and launch: complete upload previews, audit history, Forge deployment configuration, backups and restoration checks. Deploy once the existing server and DNS access are available. Verify HTTPS, production session settings, migrations, scheduler and queue operation, authenticated access, and email delivery to a designated test recipient before inviting residents.
+4. Administration and launch: complete upload previews, audit history, Laravel Cloud deployment configuration, backups and restoration checks. Deploy through Cloud once account and DNS access are available. Verify HTTPS, production session settings, migrations, scheduler and queue operation, authenticated access, and email delivery to a designated test recipient before inviting residents.
 
 Implementation can proceed locally with placeholder balance and email captured locally while hosting/domain details are resolved. Keep CSVs, resident seed files, secrets, and database exports out of Git and public build assets. Configure the supplied Resend credential only through private environment configuration; never embed it in code, documentation, browser bundles, or logs.
 
@@ -85,7 +85,7 @@ Implementation can proceed locally with placeholder balance and email captured l
 
 - First portal billing month, monthly issue day, due-date rule, and payment instructions; coordinate disabling FreshBooks recurring invoices.
 - Verified bank balance and exact as-of date; whether this account's full balance is intended as the reserve figure.
-- Target Forge server and deployment access, plus DNS access for 1262bryn.com and its Resend sending subdomain.
+- Verify Resend credentials and sender-domain DNS before resident login testing.
 - John Pappas's Unit 1 ownership transition date, if available; explicit historical client mapping allows import work to proceed without it.
 
 ## References
