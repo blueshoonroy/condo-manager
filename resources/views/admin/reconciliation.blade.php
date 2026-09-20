@@ -2,6 +2,7 @@
 @section('title', 'AI reconciliation')
 @section('content')
 <div class="page-heading"><div><a href="{{ route('admin') }}">Back to administration</a><h1>Matchmaking for payments.</h1><p class="muted">AI suggests matches. You get the final say.</p></div></div>
+@include('admin.tabs')
 <div class="admin-grid"><section class="card"><h2>AI settings</h2><p class="small muted">Choose OpenAI or Anthropic. A blank key keeps the saved key for that provider. Only administrators can manage these settings.</p>
 <form method="post" action="{{ route('admin.ai.settings') }}">@csrf<label>Provider<select name="provider">@foreach($models as $provider => $model)<option value="{{ $provider }}" @selected($settings[$provider]['selected'] ?? false)>{{ ucfirst($provider) }} · {{ $model }}</option>@endforeach</select></label>
 <label>API key<input type="password" name="api_key" autocomplete="new-password" maxlength="500" placeholder="Enter a new key or leave blank"></label>

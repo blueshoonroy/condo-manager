@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AdminController;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\BuildingServiceController;
 use App\Http\Controllers\GoogleAuthController;
 use App\Http\Controllers\PlaidController;
 use App\Http\Controllers\PortalController;
@@ -27,8 +28,15 @@ Route::middleware(['auth', ActiveResident::class])->group(function () {
     Route::get('/finances', [PortalController::class, 'finances'])->name('finances');
     Route::get('/directory', [PortalController::class, 'directory'])->name('directory');
     Route::view('/documents', 'documents')->name('documents');
+    Route::get('/services', [BuildingServiceController::class, 'index'])->name('services');
     Route::middleware(Administrator::class)->prefix('admin')->group(function () {
         Route::get('/', [AdminController::class, 'index'])->name('admin');
+        Route::get('/services', [BuildingServiceController::class, 'settings'])->name('admin.services');
+        Route::get('/services/new', [BuildingServiceController::class, 'edit'])->name('admin.services.new');
+        Route::get('/services/{service}/edit', [BuildingServiceController::class, 'edit'])->whereNumber('service')->name('admin.services.edit');
+        Route::post('/services', [BuildingServiceController::class, 'save'])->name('admin.services.create');
+        Route::post('/services/{service}', [BuildingServiceController::class, 'save'])->whereNumber('service')->name('admin.services.update');
+        Route::delete('/services/{service}', [BuildingServiceController::class, 'delete'])->whereNumber('service')->name('admin.services.delete');
         Route::get('/bank/connect', [PlaidController::class, 'index'])->name('admin.bank');
         Route::post('/bank/link-token', [PlaidController::class, 'linkToken'])->middleware('throttle:5,1,plaid-link')->name('admin.bank.link');
         Route::post('/bank/exchange', [PlaidController::class, 'exchange'])->middleware('throttle:5,1,plaid-exchange')->name('admin.bank.exchange');

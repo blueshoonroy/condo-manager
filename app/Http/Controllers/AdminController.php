@@ -21,9 +21,13 @@ use Illuminate\View\View;
 
 class AdminController extends Controller
 {
-    public function index(): View
+    public function index(Request $request): View
     {
+        $tab = $request->query('tab', 'payments');
+        abort_unless(in_array($tab, ['payments', 'billing', 'residents', 'imports', 'activity'], true), 404);
+
         return view('admin.index', [
+            'tab' => $tab,
             'households' => Household::where('active', true)->with('residents')->get(),
             'imports' => DB::table('import_batches')->orderByDesc('id')->limit(15)->get(),
             'events' => DB::table('audit_events')->orderByDesc('id')->limit(20)->get(),
@@ -62,7 +66,7 @@ class AdminController extends Controller
         abort_unless($record, 404);
         $this->withImportFile($record, fn ($path) => $importer->commit($batch, $path));
 
-        return redirect()->route('admin')->with('status', 'Import applied successfully.');
+        return redirect()->route('admin', ['tab' => 'imports'])->with('status', 'Import applied successfully.');
     }
 
     private function withImportFile(object $batch, \Closure $callback): mixed
@@ -176,7 +180,7 @@ class AdminController extends Controller
         $billing->buildingAssessment($draft['title'], $draft['total'], $draft['due_on'], $draft['request_key'], $draft['households']);
         $request->session()->forget('assessment_draft');
 
-        return redirect()->route('admin')->with('status', 'Five assessment invoices created using the unit percentages.');
+        return redirect()->route('admin', ['tab' => 'billing'])->with('status', 'Five assessment invoices created using the unit percentages.');
     }
 
     public function assessment(Request $request, BillingService $billing): RedirectResponse

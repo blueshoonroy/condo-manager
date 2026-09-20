@@ -28,7 +28,7 @@ class AdminWorkflowTest extends TestCase
         // A new replica has none of the previous request's local files.
         Storage::fake('local');
         $this->get('/admin/imports/'.$batch->id)->assertOk()->assertSee('Apply validated import');
-        $this->post('/admin/imports/'.$batch->id)->assertRedirect('/admin');
+        $this->post('/admin/imports/'.$batch->id)->assertRedirect('/admin?tab=imports');
         $this->assertDatabaseCount('bank_transactions', 1);
         $this->post('/admin/imports/'.$batch->id)->assertSessionHasErrors('file');
         $this->assertDatabaseCount('bank_transactions', 1);

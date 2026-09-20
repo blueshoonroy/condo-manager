@@ -66,7 +66,7 @@ class AssessmentSplitTest extends TestCase
         $this->actingAs($admin)->post('/admin/assessments/preview', ['title' => 'Roof', 'amount' => '100.01', 'due_on' => now()->addDays(30)->toDateString()])->assertOk()->assertSee('$23.01');
         $this->assertDatabaseCount('invoices', 0);
         $key = session('assessment_draft.request_key');
-        $this->post('/admin/assessments/confirm', ['request_key' => $key, 'amount' => '1.00'])->assertRedirect('/admin');
+        $this->post('/admin/assessments/confirm', ['request_key' => $key, 'amount' => '1.00'])->assertRedirect('/admin?tab=billing');
         $this->assertSame(10001, (int) Invoice::sum('total_cents'));
         $this->post('/admin/assessments/confirm', ['request_key' => $key])->assertSessionHasErrors('assessment');
         $this->assertDatabaseCount('invoices', 5);

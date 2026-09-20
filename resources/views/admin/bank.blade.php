@@ -2,6 +2,7 @@
 @section('title', 'Bank connection')
 @section('content')
 <div class="page-heading"><div><a href="{{ route('admin') }}">Back to administration</a><h1>Less CSV. More automatic.</h1><p class="muted">Connect the association's BMO account with Plaid.</p></div></div>
+@include('admin.tabs')
 @if(config('services.plaid.environment') === 'sandbox')<div class="notice"><strong>Sandbox test mode.</strong> Test balances and transactions stay on this admin page. They never affect association finances or invoice reconciliation. Real BMO access requires Plaid Production credentials.</div>@endif
 @if($error)<div class="notice error">{{ $error }}</div>@endif
 <section class="card" id="plaid-connect" data-link-url="{{ route('admin.bank.link') }}" data-exchange-url="{{ route('admin.bank.exchange') }}" data-sync-url="{{ route('admin.bank.sync') }}" data-resume-token="{{ $resumeToken }}" data-resume-update="{{ $resumeUpdate ? '1' : '0' }}">
