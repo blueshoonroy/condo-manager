@@ -57,3 +57,19 @@ if (plaidPanel) {
     plaidPanel.querySelectorAll('[data-plaid-open]').forEach(button => button.addEventListener('click', () => open(button.dataset.update === '1')));
     if (plaidPanel.dataset.resumeToken) open(plaidPanel.dataset.resumeUpdate === '1', plaidPanel.dataset.resumeToken);
 }
+
+const invoiceSelection = document.querySelector('[data-invoice-selection]');
+if (invoiceSelection) {
+    const boxes = [...invoiceSelection.querySelectorAll('input[name="invoice_ids[]"]:not(:disabled)')];
+    const all = invoiceSelection.querySelector('[data-select-invoices]');
+    const update = () => {
+        const count = boxes.filter(box => box.checked).length;
+        invoiceSelection.querySelector('[data-invoice-count]').textContent = count + ' selected' + (count > 200 ? ' (maximum 200 per batch)' : '');
+        invoiceSelection.querySelector('[data-invoice-submit]').disabled = count === 0 || count > 200;
+        all.checked = boxes.length > 0 && count === boxes.length;
+        all.indeterminate = count > 0 && count < boxes.length;
+    };
+    all.addEventListener('change', () => { boxes.forEach(box => { box.checked = all.checked; }); update(); });
+    boxes.forEach(box => box.addEventListener('change', update));
+    update();
+}

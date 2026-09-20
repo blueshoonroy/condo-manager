@@ -5,6 +5,7 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BuildingServiceController;
 use App\Http\Controllers\GoogleAuthController;
 use App\Http\Controllers\ImpersonationController;
+use App\Http\Controllers\InvoiceEmailController;
 use App\Http\Controllers\PlaidController;
 use App\Http\Controllers\PortalController;
 use App\Http\Controllers\ReconciliationController;
@@ -33,6 +34,8 @@ Route::middleware(['auth', ActiveResident::class])->group(function () {
     Route::get('/services', [BuildingServiceController::class, 'index'])->name('services');
     Route::middleware(Administrator::class)->prefix('admin')->group(function () {
         Route::get('/', [AdminController::class, 'index'])->name('admin');
+        Route::post('/invoice-emails/preview', [InvoiceEmailController::class, 'preview'])->name('admin.invoice-emails.preview');
+        Route::post('/invoice-emails/send', [InvoiceEmailController::class, 'send'])->middleware('throttle:5,1,invoice-emails')->name('admin.invoice-emails.send');
         Route::post('/impersonate/{user}', [ImpersonationController::class, 'start'])->whereNumber('user')->name('admin.impersonate');
         Route::get('/services', [BuildingServiceController::class, 'settings'])->name('admin.services');
         Route::get('/services/new', [BuildingServiceController::class, 'edit'])->name('admin.services.new');

@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Jobs\SendInvoice;
 use App\Models\Household;
 use App\Models\Invoice;
 use App\Support\Audit;
@@ -143,6 +144,10 @@ class BillingService
     {
         foreach ($invoice->household->residents()->where('active', true)->get() as $resident) {
             DB::table('invoice_deliveries')->insertOrIgnore(['invoice_id' => $invoice->id, 'user_id' => $resident->id, 'created_at' => now(), 'updated_at' => now()]);
+            if (config('association.invoice_emails_enabled')) {
+                $id = DB::table('invoice_deliveries')->where('invoice_id', $invoice->id)->where('user_id', $resident->id)->where('send_key', 'automatic')->value('id');
+                SendInvoice::dispatch($id)->afterCommit();
+            }
         }
     }
 }
