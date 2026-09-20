@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 300" fill="none">
+  <title>1262 Bryn Mawr limestone building</title>
+  <defs>
+    <pattern id="stone" width="44" height="15" patternUnits="userSpaceOnUse">
+      <path d="M0 15H44M22 0V15" stroke="#a5ad92" stroke-width=".6" opacity=".5"/>
+    </pattern>
+    <g id="window" stroke="#50655a" stroke-width="2">
+      <path d="M0 0H27V46H0Z" fill="#8caaa0"/>
+      <path d="M2 23H25M5 4V19" stroke="#c6d6c7" stroke-width="1.3"/>
+      <path d="M-3 48H30" stroke="#858d75"/>
+    </g>
+    <g id="baluster" fill="#dbd9be" stroke="#8c947c" stroke-width=".8">
+      <path d="M-3 0H3L2 4Q6 8 2 12L3 17H-3L-2 12Q-6 8-2 4Z"/>
+    </g>
+  </defs>
+  <ellipse cx="155" cy="279" rx="125" ry="10" fill="#d0d9c1"/>
+  <!-- Three stories, with a projecting right-hand bay and limestone cornice. -->
+  <g stroke="#8c947c" stroke-linejoin="round">
+    <path d="M68 39L170 48L207 34L248 46V260H68Z" fill="#dfdfc8"/>
+    <path d="M170 48L207 34V260H170Z" fill="#c7cbb2"/>
+    <path d="M207 34L248 46V260H207Z" fill="#d5d7be"/>
+    <path d="M68 39L170 48L207 34L248 46V260H68Z" fill="url(#stone)"/>
+    <path d="M63 30L169 40L207 25L252 38V47L207 35L170 49L64 39Z" fill="#c9cdb3"/>
+    <path d="M62 24L169 34L207 20L253 32V38L207 26L169 41L62 30Z" fill="#e7e5d0"/>
+    <path d="M65 111L170 120L207 109L250 119V126L207 116L170 127L65 118Z" fill="#cccdb5"/>
+    <path d="M65 179L170 187L207 179L250 188V197L207 188L170 196L65 188Z" fill="#cccdb5"/>
+  </g>
+  <use href="#window" x="101" y="58"/>
+  <use href="#window" transform="translate(178 61) skewY(-19) scale(.65 1)"/>
+  <use href="#window" transform="translate(214 54) skewY(15) scale(.85 1)"/>
+  <use href="#window" x="101" y="130"/>
+  <use href="#window" transform="translate(178 136) skewY(-15) scale(.65 .95)"/>
+  <use href="#window" transform="translate(214 127) skewY(14) scale(.85 .95)"/>
+  <use href="#window" transform="translate(177 207) skewY(-12) scale(.7 .85)"/>
+  <use href="#window" transform="translate(214 200) skewY(13) scale(.85 .85)"/>
+  <!-- Recessed entrance, stone porch columns and the second-floor balcony. -->
+  <path d="M81 199H140V258H81Z" fill="#657566"/>
+  <path d="M91 207H123V254H91Z" fill="#354f43" stroke="#97a08a" stroke-width="3"/>
+  <path d="M96 211H118V230H96Z" fill="#91aaa0"/>
+  <circle cx="117" cy="240" r="1.5" fill="#d8cc98"/>
+  <g fill="#dedcc1" stroke="#939a81">
+    <path d="M72 191H82V257H72ZM144 192H154V255H144Z"/>
+    <path d="M68 185H160V199H68Z"/>
+    <path d="M67 160H160V165H67ZM68 182H161V187H68Z"/>
+    <path d="M69 158H77V184H69ZM152 159H160V186H152Z"/>
+  </g>
+  <g transform="translate(0 166)">
+    <use href="#baluster" x="84"/><use href="#baluster" x="96"/>
+    <use href="#baluster" x="108"/><use href="#baluster" x="120"/>
+    <use href="#baluster" x="132"/><use href="#baluster" x="144"/>
+  </g>
+  <path d="M80 254H139V260H145V266H151V272H157V278H67V272H72V266H76V260H80Z" fill="#d9dac3" stroke="#979e86"/>
+  <path d="M80 260H139M76 266H145M72 272H151" stroke="#979e86"/>
+  <!-- Garden, redbud tree and iron fence. -->
+  <g fill="#a2b485">
+    <ellipse cx="222" cy="255" rx="35" ry="13"/>
+    <circle cx="225" cy="224" r="21"/><circle cx="206" cy="229" r="15"/>
+    <ellipse cx="45" cy="269" rx="24" ry="9"/>
+  </g>
+  <path d="M224 263L222 230M45 266Q52 215 40 176M48 231L27 207M47 218L72 190M44 199L24 180" stroke="#879578" stroke-width="2.5"/>
+  <g fill="#bd919b" opacity=".9">
+    <circle cx="24" cy="180" r="4"/><circle cx="39" cy="174" r="5"/>
+    <circle cx="47" cy="187" r="4"/><circle cx="30" cy="194" r="5"/>
+    <circle cx="23" cy="208" r="4"/><circle cx="62" cy="196" r="5"/>
+    <circle cx="71" cy="188" r="4"/><circle cx="55" cy="207" r="4"/>
+  </g>
+  <g stroke="#536b59" stroke-width="1.4">
+    <path d="M20 245H70M20 254H70M20 281H70M167 245H280M167 254H280M167 281H280"/>
+    <path d="M20 239V283M30 242V281M40 242V281M50 242V281M60 242V281M70 239V283M167 239V283M178 242V281M189 242V281M200 242V281M211 242V281M222 242V281M233 242V281M244 242V281M255 242V281M266 242V281M280 239V283"/>
+  </g>
+</svg>

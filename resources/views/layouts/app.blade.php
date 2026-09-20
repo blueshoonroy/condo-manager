@@ -19,7 +19,7 @@
         @endforeach
         @if(auth()->user()->is_admin)<div class="nav-label">MANAGEMENT</div><a class="{{ request()->routeIs('admin*') ? 'selected' : '' }}" href="{{ route('admin') }}"><span aria-hidden="true">⚙</span>Administration</a>@endif
     </nav>
-    <div class="sidebar-bottom"><span class="eyebrow">A PLACE TO CALL HOME</span><p>1262 W. Bryn Mawr Ave<br>Chicago, IL 60660</p><span class="small">Five homes. One community.</span></div>
+    <div class="sidebar-bottom"><span class="eyebrow">THE BUILDING WE SHARE</span><p>1262 W. Bryn Mawr Ave<br>Chicago, IL 60660</p><span class="small">Five units. Several opinions.</span></div>
 </aside>
 <div class="shell">
     <header class="topbar"><span class="small">1262 Bryn Mawr Association <span class="muted">/ Resident portal</span></span><div class="account"><span class="avatar">{{ mb_substr(auth()->user()->name, 0, 1) }}</span><span>{{ auth()->user()->name }}<small>Unit {{ auth()->user()->household?->unit_id }}{{ auth()->user()->is_admin ? ' · Administrator' : '' }}</small></span><form method="post" action="{{ route('logout') }}">@csrf<button class="text-button">Sign out</button></form></div></header>
