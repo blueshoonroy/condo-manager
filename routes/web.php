@@ -3,6 +3,7 @@
 use App\Http\Controllers\AdminController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\PortalController;
+use App\Http\Controllers\ReconciliationController;
 use App\Http\Middleware\ActiveResident;
 use App\Http\Middleware\Administrator;
 use Illuminate\Support\Facades\Route;
@@ -33,6 +34,13 @@ Route::middleware(['auth', ActiveResident::class])->group(function () {
         Route::post('/payments/{payment}/allocate', [AdminController::class, 'allocate'])->whereNumber('payment')->name('admin.allocate');
         Route::post('/payments/{payment}/reverse', [AdminController::class, 'reverse'])->whereNumber('payment')->name('admin.reverse');
         Route::post('/assessments', [AdminController::class, 'assessment'])->name('admin.assessment');
+        Route::post('/assessments/preview', [AdminController::class, 'assessmentPreview'])->name('admin.assessment.preview');
+        Route::post('/assessments/confirm', [AdminController::class, 'assessmentConfirm'])->name('admin.assessment.confirm');
+        Route::get('/reconciliation', [ReconciliationController::class, 'index'])->name('admin.reconciliation');
+        Route::post('/reconciliation/settings', [ReconciliationController::class, 'settings'])->name('admin.ai.settings');
+        Route::post('/reconciliation', [ReconciliationController::class, 'start'])->middleware('throttle:3,10')->name('admin.reconciliation.start');
+        Route::get('/reconciliation/{run}', [ReconciliationController::class, 'show'])->whereNumber('run')->name('admin.reconciliation.run');
+        Route::post('/reconciliation/suggestions/{suggestion}', [ReconciliationController::class, 'review'])->whereNumber('suggestion')->name('admin.reconciliation.review');
         Route::post('/invoices/{invoice}/void', [AdminController::class, 'void'])->whereNumber('invoice')->name('admin.void');
         Route::post('/residents/{user}', [AdminController::class, 'resident'])->name('admin.resident');
         Route::post('/dues', [AdminController::class, 'dues'])->name('admin.dues');

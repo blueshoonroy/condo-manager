@@ -35,7 +35,7 @@ Tests use isolated in-memory SQLite and fake email delivery. The actual local en
 
 ## Billing and accounting
 
-- Billing and invoice emails start disabled. Confirm the FreshBooks cutover, first billing month, issue day, due-day interval, and payment instructions before enabling them.
+- Production monthly dues begin October 1, 2026: issued on the 1st at 8 a.m. Chicago time and due on the 15th. Payment information includes Zelle to 1262brynmawr@gmail.com and checks to 1262 W Bryn Mawr #3, Chicago IL 60660. Local billing/email remain disabled by default. Disable FreshBooks recurring invoices to avoid duplicate notices.
 - One dues invoice per unit and month, with database uniqueness and transactions protecting retries. The scheduled command catches up configured missing periods. `php artisan association:bill 2026-10` generates a specific eligible month.
 - Roy records payments, optionally linking an imported bank credit. Allocations can cover multiple household invoices or remain unapplied credit; the allocation screen applies that credit later. Reversals restore outstanding amounts. Bank deposits never automatically mark invoices paid.
 - Historical paid invoices use the exported settlement total; they do not create another bank receipt. Imports refuse to overwrite invoices that have portal allocations, have been voided, or have conflicting household ownership.
@@ -43,12 +43,18 @@ Tests use isolated in-memory SQLite and fake email delivery. The actual local en
 - Cash balances require a verified end-of-day checkpoint. Later posted transactions are added to that balance. Upload complete bank periods: a transaction-only CSV cannot prove that omitted days have no activity. This is cash visibility, not a full general ledger or a formal reserve-fund ledger.
 - Portal invoice emails have persistent delivery records and Resend idempotency keys. Ambiguous attempts older than 23 hours require manual review in Resend. SMTP development delivery cannot offer the same provider-level guarantee.
 
+## Assessments and AI reconciliation
+
+Administration previews a building-wide assessment before creating five invoices at 14%, 21%, 21%, 21%, and 23%. Largest-remainder rounding preserves the total; equal remainders are resolved by unit number.
+
+Use Administration > AI Reconcile & settings to save an encrypted OpenAI or Anthropic key. Each provider retains its own key; no key is echoed or included in validation-session data. Requests use GPT-4.1 mini or Claude Haiku 4.5 and are limited to 80 credits/100 open invoices. A queued job proposes matches without recording payments. Review evidence, allocations and any unapplied credit, then approve or reject each suggestion. Approval rechecks the live bank receipt and invoice balances and records a payment through the normal accounting service. Stale suggestions must be rejected and rerun. Provider errors are sanitized. No live AI request occurs until an administrator supplies a key and starts a run.
+
 ## Production
 
 See [DEPLOYMENT.md](DEPLOYMENT.md) for Laravel Cloud configuration, environment variables, private initialization, scheduler, queue worker, backups, and launch steps. Set the Cloud build command to `bash deploy/cloud-build.sh` and the deploy command to `bash deploy/cloud-deploy.sh`.
 
-Production needs a verified Resend sender, the bank balance checkpoint, and final billing settings. Set PHP 8.4+ and Node 22.12+. Use `/public` as the web root. Do not run local setup commands or initialization on every deployment.
+Production uses a verified Resend sender; record and maintain the bank balance checkpoint in Administration. Set PHP 8.4+ and Node 22.12+. Use `/public` as the web root. Do not run local setup commands or initialization on every deployment.
 
 First release boundaries: manual bank imports and payment confirmation; no online card/ACH checkout, automatic bank feed, automatic refunds, reminder cadence, invoice PDF originals, or ownership-transfer wizard. Invoice details are printable. Historical household mappings remain intact.
 
-Local verification: 29 automated tests cover resident/admin authorization, passwordless login, import previews and conflicts, billing retries and cutover overlap, payments/credits/reversals, balance calculations, and email retry behavior. Browser checks also exercised login via Mailpit, authenticated pages, a 390px mobile viewport, and logout.
+Local verification: 43 automated tests cover resident/admin authorization, passwordless login, import previews and conflicts, billing retries and cutover overlap, payments/credits/reversals, balance calculations, and email retry behavior. Browser checks also exercised login via Mailpit, authenticated pages, a 390px mobile viewport, and logout.

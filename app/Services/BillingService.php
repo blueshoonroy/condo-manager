@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Household;
 use App\Models\Invoice;
 use App\Support\Audit;
+use App\Support\Money;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -85,6 +86,56 @@ class BillingService
             }
 
             return $invoice;
+        });
+    }
+
+    public function assessmentSplit(int $total): array
+    {
+        if ($total < 100 || $total > 999999999) {
+            throw ValidationException::withMessages(['amount' => 'Enter a total from $1.00 to $9,999,999.99.']);
+        }
+        $shares = config('association.assessment_percentages');
+        $amounts = $remainders = [];
+        foreach ($shares as $unit => $percent) {
+            $amounts[$unit] = intdiv($total * $percent, 100);
+            $remainders[$unit] = ($total * $percent) % 100;
+        }
+        // Largest remainder, with unit number breaking ties, preserves every cent.
+        arsort($remainders, SORT_NUMERIC);
+        $remaining = $total - array_sum($amounts);
+        foreach (array_keys($remainders) as $unit) {
+            if ($remaining-- > 0) {
+                $amounts[$unit]++;
+            }
+        }
+
+        return $amounts;
+    }
+
+    public function buildingAssessment(string $title, int $total, string $dueOn, string $requestKey, array $expectedHouseholds): int
+    {
+        return DB::transaction(function () use ($title, $total, $dueOn, $requestKey, $expectedHouseholds) {
+            $units = DB::table('units')->orderBy('number')->lockForUpdate()->get()->keyBy('number');
+            $amounts = $this->assessmentSplit($total);
+            foreach ($amounts as $number => $amount) {
+                $unit = $units->get($number);
+                $households = Household::where('unit_id', $unit?->id)->where('active', true)->get();
+                if (! $unit || $households->count() !== 1 || ($expectedHouseholds[$number] ?? null) != $households->first()->id) {
+                    throw ValidationException::withMessages(['assessment' => 'A unit owner changed or is missing. Preview the assessment again.']);
+                }
+                $household = $households->first();
+                $invoice = Invoice::firstOrCreate(['billing_key' => 'assessment:'.$requestKey.':unit:'.$number], [
+                    'household_id' => $household->id, 'unit_id' => $unit->id,
+                    'number' => 'BM-SA-'.strtoupper(Str::random(10)), 'issued_on' => now('America/Chicago')->toDateString(), 'due_on' => $dueOn,
+                    'total_cents' => $amount, 'items' => [['name' => $title, 'description' => config('association.assessment_percentages')[$number].'% of '.Money::format($total).' building assessment', 'amount_cents' => $amount]],
+                ]);
+                if ($invoice->wasRecentlyCreated) {
+                    $this->prepareDeliveries($invoice);
+                    Audit::record('invoice.assessment', 'invoice:'.$invoice->id, ['assessment_total_cents' => $total, 'percentage' => config('association.assessment_percentages')[$number]]);
+                }
+            }
+
+            return count($amounts);
         });
     }
 

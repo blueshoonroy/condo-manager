@@ -14,6 +14,8 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
@@ -146,6 +148,35 @@ class AdminController extends Controller
         $service->reverse($payment, $request->reason);
 
         return back()->with('status', 'Payment reversed; invoice balances restored.');
+    }
+
+    public function assessmentPreview(Request $request, BillingService $billing): View
+    {
+        $data = $request->validate(['title' => 'required|string|max:200', 'amount' => ['required', 'regex:/^\d{1,7}(\.\d{1,2})?$/'], 'due_on' => 'required|date_format:Y-m-d|after_or_equal:today']);
+        $total = Money::cents($data['amount']);
+        $amounts = $billing->assessmentSplit($total);
+        $households = Household::where('active', true)->join('units', 'units.id', '=', 'households.unit_id')->select('households.*', 'units.number as unit_number')->get()->keyBy('unit_number');
+        if ($households->count() !== 5 || array_diff(array_keys($amounts), $households->keys()->all())) {
+            throw ValidationException::withMessages(['assessment' => 'All five units need an active household before creating an assessment.']);
+        }
+        $requestKey = (string) Str::uuid();
+        $request->session()->put('assessment_draft', $data + ['total' => $total, 'households' => $households->pluck('id', 'unit_number')->all(), 'request_key' => $requestKey]);
+
+        return view('admin.assessment', compact('data', 'total', 'amounts', 'households', 'requestKey'));
+    }
+
+    public function assessmentConfirm(Request $request, BillingService $billing): RedirectResponse
+    {
+        $request->validate(['request_key' => 'required|uuid']);
+        $draft = $request->session()->get('assessment_draft');
+        if (! $draft || $draft['request_key'] !== $request->request_key) {
+            throw ValidationException::withMessages(['assessment' => 'Preview this assessment before creating invoices.']);
+        }
+        Validator::make($draft, ['due_on' => 'required|date_format:Y-m-d|after_or_equal:today'])->validate();
+        $billing->buildingAssessment($draft['title'], $draft['total'], $draft['due_on'], $draft['request_key'], $draft['households']);
+        $request->session()->forget('assessment_draft');
+
+        return redirect()->route('admin')->with('status', 'Five assessment invoices created using the unit percentages.');
     }
 
     public function assessment(Request $request, BillingService $billing): RedirectResponse

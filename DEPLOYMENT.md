@@ -1,6 +1,6 @@
 # Laravel Cloud deployment
 
-Production is deployed at **https://1262bryn.com** in `us-east-1`, using the existing Cloud environment's PHP 8.5 and Node 24 selections, managed MySQL 8.4, one 512 MB App instance and one database queue worker. The scheduler is enabled; daily database snapshots retain seven days. Initial data is loaded (133 invoices, 282 transactions), and recurring billing/invoice email remain disabled pending cutover. The following instructions also serve as a rebuild guide.
+Production is deployed at **https://1262bryn.com** in `us-east-1`, using the existing Cloud environment's PHP 8.5 and Node 24 selections, managed MySQL 8.4, one 512 MB App instance and one database queue worker. The scheduler is enabled; daily database snapshots retain seven days. Initial data is loaded (133 invoices, 282 transactions), and monthly dues are configured to begin October 1, 2026, due on the 15th. The following instructions also serve as a rebuild guide.
 
 Create a production application for GitHub repository `blueshoonroy/condo-manager`, branch `main`, on [Laravel Cloud](https://cloud.laravel.com). Select PHP 8.4 and Node 22.12+ (or Node 24), using the standard PHP runtime. Start with one small App instance and a dedicated managed MySQL database in the same region, preferably the nearest available US region to Chicago. Attach the database as the default. Review Cloud's monthly resource estimate before creating resources.
 
@@ -41,17 +41,17 @@ MAIL_MAILER=resend
 RESEND_API_KEY=YOUR_PRIVATE_RESEND_KEY
 MAIL_FROM_ADDRESS=portal@mail.1262bryn.com
 MAIL_FROM_NAME="1262 Bryn Mawr Association"
-BILLING_ENABLED=false
-BILLING_START_MONTH=
+BILLING_ENABLED=true
+BILLING_START_MONTH=2026-10
 BILLING_ISSUE_DAY=1
-BILLING_DUE_DAYS=30
-INVOICE_EMAILS_ENABLED=false
-PAYMENT_INSTRUCTIONS="Contact Roy for payment instructions."
+BILLING_DUE_DAYS=14
+INVOICE_EMAILS_ENABLED=true
+PAYMENT_INSTRUCTIONS="Pay via Zelle: 1262brynmawr@gmail.com\nPay by check to: 1262 W Bryn Mawr #3, Chicago IL 60660"
 ```
 
 Use the assigned Cloud URL initially. Set sensitive values in Cloud's environment settings or linked secrets, never in Git. Verify `mail.1262bryn.com` with Resend's provided DNS records before testing login. Redeploy after changing variables.
 
-Billing dates are placeholders. Confirm the start month (`YYYY-MM`), issue day (1–28), due days and payment instructions before enabling billing. Disable FreshBooks recurrence and reconcile the final export first. Login email works independently of the invoice-email switch.
+The confirmed schedule starts October 2026, with invoices issued on the 1st and due on the 15th (14 days later). Keep FreshBooks recurrence disabled. Login email works independently of invoice delivery. AI API keys are configured by Roy in Administration > AI Reconcile & settings; no additional hosting variables are required for AI.
 
 ## Scheduler and queue
 
@@ -87,7 +87,7 @@ Sign in as Roy and use Administration to preview/apply the FreshBooks and BMO CS
 
 Add `1262bryn.com` in Cloud's Domains settings and apply the exact DNS records provided. Cloud provisions HTTPS after verification. Change `APP_URL` to `https://1262bryn.com` and redeploy.
 
-Verify `/up`, Roy's login email, admin access, household isolation, import totals, queue processing and scheduler operation. Configure database backups and verify a restore; backups contain uploaded sources as well as accounting records. Monitor application errors and failed jobs. Keep billing disabled until the cutover settings and opening bank checkpoint are confirmed.
+Verify `/up`, Roy's login email, admin access, household isolation, import totals, queue processing and scheduler operation. Configure database backups and verify a restore; backups contain uploaded sources as well as accounting records. Monitor application errors and failed jobs. Verify the configured October billing schedule and maintain the opening bank checkpoint.
 
 ## CLI access
 

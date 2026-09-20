@@ -1,6 +1,7 @@
-document.querySelectorAll('[data-confirm]').forEach(form => {
+document.querySelectorAll('form').forEach(form => {
     form.addEventListener('submit', event => {
-        if (!window.confirm(form.dataset.confirm)) event.preventDefault();
+        const message = event.submitter?.dataset.confirm || form.dataset.confirm;
+        if (message && !window.confirm(message)) event.preventDefault();
     });
 });
 document.querySelector('[data-print]')?.addEventListener('click', () => window.print());
