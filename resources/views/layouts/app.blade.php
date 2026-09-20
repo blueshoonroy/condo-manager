@@ -23,11 +23,14 @@
     <div class="sidebar-bottom"><span class="eyebrow">THE BUILDING WE SHARE</span><p>1262 W. Bryn Mawr Ave<br>Chicago, IL 60660</p><span class="small">Five units. Several opinions.</span></div>
 </aside>
 <div class="shell">
-    <header class="topbar"><span class="small">1262 Bryn Mawr Association <span class="muted">/ Resident portal</span></span><div class="account"><span class="avatar">{{ mb_substr(auth()->user()->name, 0, 1) }}</span><span>{{ auth()->user()->name }}<small>Unit {{ auth()->user()->household?->unit_id }}{{ auth()->user()->is_admin ? ' · Administrator' : '' }}</small></span>@if(config('services.google.client_id') && !auth()->user()->google_id)<a class="small" href="{{ route('google.link') }}">Link Google</a>@endif<form method="post" action="{{ route('logout') }}">@csrf<button class="text-button">Sign out</button></form></div></header>
+    <header class="topbar"><span class="small">1262 Bryn Mawr Association <span class="muted">/ Resident portal</span></span><div class="account"><span class="avatar">{{ mb_substr(auth()->user()->name, 0, 1) }}</span><span>{{ auth()->user()->name }}<small>Unit {{ auth()->user()->household?->unit_id }}{{ auth()->user()->is_admin ? ' · Administrator' : '' }}</small></span>@if(!session('impersonated_user_id') && config('services.google.client_id') && !auth()->user()->google_id)<a class="small" href="{{ route('google.link') }}">Link Google</a>@endif<form method="post" action="{{ route('logout') }}">@csrf<button class="text-button">Sign out</button></form></div></header>
 @else
 <div class="guest-shell">
 @endauth
 <main id="main">
+    @if(session('impersonated_user_id'))
+    <div class="notice impersonation-banner" role="status"><div><strong>Viewing as {{ auth()->user()->name }} &middot; Unit {{ auth()->user()->household?->unit_id }}</strong><br><span class="small">Read-only resident preview. Your administrator account is still signed in.</span></div><form method="post" action="{{ route('impersonation.stop') }}">@csrf<button class="button secondary">Return to my account</button></form></div>
+    @endif
     @if(session('status'))<div class="notice" role="status">{{ session('status') }}</div>@endif
     @if($errors->any())<div class="notice error" role="alert"><strong>Please check the following:</strong><ul>@foreach($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></div>@endif
     @yield('content')

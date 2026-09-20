@@ -4,6 +4,7 @@ use App\Http\Controllers\AdminController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BuildingServiceController;
 use App\Http\Controllers\GoogleAuthController;
+use App\Http\Controllers\ImpersonationController;
 use App\Http\Controllers\PlaidController;
 use App\Http\Controllers\PortalController;
 use App\Http\Controllers\ReconciliationController;
@@ -20,6 +21,7 @@ Route::middleware('guest')->group(function () {
 });
 Route::get('/auth/google/callback', [GoogleAuthController::class, 'callback'])->middleware('throttle:20,1')->name('google.callback');
 Route::middleware(['auth', ActiveResident::class])->group(function () {
+    Route::post('/impersonation/stop', [ImpersonationController::class, 'stop'])->name('impersonation.stop');
     Route::get('/auth/google/link', [GoogleAuthController::class, 'redirect'])->middleware('throttle:10,1')->name('google.link');
     Route::get('/', [PortalController::class, 'dashboard'])->name('dashboard');
     Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
@@ -31,6 +33,7 @@ Route::middleware(['auth', ActiveResident::class])->group(function () {
     Route::get('/services', [BuildingServiceController::class, 'index'])->name('services');
     Route::middleware(Administrator::class)->prefix('admin')->group(function () {
         Route::get('/', [AdminController::class, 'index'])->name('admin');
+        Route::post('/impersonate/{user}', [ImpersonationController::class, 'start'])->whereNumber('user')->name('admin.impersonate');
         Route::get('/services', [BuildingServiceController::class, 'settings'])->name('admin.services');
         Route::get('/services/new', [BuildingServiceController::class, 'edit'])->name('admin.services.new');
         Route::get('/services/{service}/edit', [BuildingServiceController::class, 'edit'])->whereNumber('service')->name('admin.services.edit');

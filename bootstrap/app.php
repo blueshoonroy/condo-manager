@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\ImpersonateResident;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -13,6 +14,7 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->trimStrings(except: ['service_password']);
+        $middleware->web(append: [ImpersonateResident::class]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->dontFlash(['api_key', 'public_token', 'access_token', 'client_secret', 'code', 'service_password', 'username', 'account', 'notes']);
