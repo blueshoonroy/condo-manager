@@ -22,7 +22,7 @@ class ReconciliationService
                 throw ValidationException::withMessages(['ai' => 'A reconciliation is already running. Refresh its results shortly.']);
             }
             $provider = app(AiSettings::class)->selectedProvider();
-            $banks = DB::table('bank_transactions')->where('amount_cents', '>', 0)->whereBetween('posted_on', [$from, $to])
+            $banks = DB::table('bank_transactions')->whereNull('removed_at')->where('review_required', false)->where('amount_cents', '>', 0)->whereBetween('posted_on', [$from, $to])
                 ->whereNotIn('id', DB::table('payments')->whereNotNull('bank_transaction_id')->select('bank_transaction_id'))
                 ->whereNotIn('id', DB::table('reconciliation_suggestions')->where('status', 'pending')->select('bank_transaction_id'))
                 ->orderBy('posted_on')->orderBy('id')->limit(81)->get();

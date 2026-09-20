@@ -22,7 +22,7 @@ class PaymentService
             }
             if (! empty($data['bank_transaction_id'])) {
                 $bank = DB::table('bank_transactions')->where('id', $data['bank_transaction_id'])->lockForUpdate()->first();
-                if (! $bank || $bank->amount_cents != $data['amount_cents'] || $bank->posted_on !== $data['paid_on'] || DB::table('payments')->where('bank_transaction_id', $bank->id)->exists()) {
+                if (! $bank || $bank->removed_at || $bank->review_required || $bank->amount_cents != $data['amount_cents'] || $bank->posted_on !== $data['paid_on'] || DB::table('payments')->where('bank_transaction_id', $bank->id)->exists()) {
                     $this->fail('Use an unrecorded bank credit with the same amount and posted date.');
                 }
             }
@@ -86,6 +86,9 @@ class PaymentService
             abort_unless($payment, 404);
             if (! $payment->reversed_at) {
                 DB::table('payments')->where('id', $id)->update(['reversed_at' => now(), 'reversal_reason' => $reason, 'bank_transaction_id' => null, 'updated_at' => now()]);
+                if ($payment->bank_transaction_id) {
+                    DB::table('bank_transactions')->where('id', $payment->bank_transaction_id)->update(['review_required' => false]);
+                }
                 Audit::record('payment.reversed', 'payment:'.$id, ['reason' => $reason, 'bank_transaction_id' => $payment->bank_transaction_id]);
             }
         });

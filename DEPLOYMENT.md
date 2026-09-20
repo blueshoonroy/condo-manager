@@ -37,6 +37,7 @@ SESSION_DRIVER=database
 SESSION_SECURE_COOKIE=true
 CACHE_STORE=database
 QUEUE_CONNECTION=database
+DB_QUEUE_RETRY_AFTER=180
 MAIL_MAILER=resend
 RESEND_API_KEY=YOUR_PRIVATE_RESEND_KEY
 MAIL_FROM_ADDRESS=portal@mail.1262bryn.com
@@ -52,6 +53,16 @@ PAYMENT_INSTRUCTIONS="Pay via Zelle: 1262brynmawr@gmail.com\nPay by check to: 12
 Use the assigned Cloud URL initially. Set sensitive values in Cloud's environment settings or linked secrets, never in Git. Verify `mail.1262bryn.com` with Resend's provided DNS records before testing login. Redeploy after changing variables.
 
 The confirmed schedule starts October 2026, with invoices issued on the 1st and due on the 15th (14 days later). Keep FreshBooks recurrence disabled. Login email works independently of invoice delivery. AI API keys are configured by Roy in Administration > AI Reconcile & settings; no additional hosting variables are required for AI.
+
+## Google login and Plaid
+
+Set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in Cloud (the secret is linked through Secrets Manager). Configure a Google **Web application** client with redirect URI `https://1262bryn.com/auth/google/callback`. No JavaScript origin is needed. Only active registered residents can sign in. A non-Gmail Google account outside Google Workspace must first sign in by email code, then use **Link Google**. If the Google consent app is in Testing, add resident emails as test users or publish the app for residents to access it.
+
+Set `PLAID_CLIENT_ID`, `PLAID_SECRET` and `PLAID_ENV=sandbox` initially. Allow redirect URI `https://1262bryn.com/admin/bank/connect` in Plaid. Roy connects through Administration > Bank connection and selects one USD checking/savings account. Sandbox data stays in separate tables and the admin preview; it never affects resident balances, bank history or reconciliation.
+
+For real BMO access, obtain Plaid Production access for Transactions, update `PLAID_ENV=production` and its matching credentials, redeploy, then complete bank sign-in. Choose the same account as the existing CSVs and a handoff date immediately after the final CSV transaction date. CSV imports are blocked on and after that date to prevent duplicates. Access tokens are encrypted with `APP_KEY`. Disconnect revokes the bank access token while preserving history.
+
+The scheduler queues transaction sync hourly; balances are fetched every six hours (or with manual Refresh). Provider posting delays still apply. No webhook is required for this polling setup. Pending transactions are excluded from resident accounting. Bank corrections/removals update bank history but never silently alter approved payments: affected receipts are flagged for review. Bank sync does not mark invoices paid; manual/AI reconciliation still requires approval. The database queue retry window of 180 seconds exceeds the sync job's 150-second timeout.
 
 ## Scheduler and queue
 

@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <meta name="robots" content="noindex,nofollow">
     <link rel="icon" href="{{ asset('favicon.svg') }}" type="image/svg+xml">
     <title>@yield('title', 'Welcome') · 1262 Bryn Mawr</title>
@@ -22,7 +23,7 @@
     <div class="sidebar-bottom"><span class="eyebrow">THE BUILDING WE SHARE</span><p>1262 W. Bryn Mawr Ave<br>Chicago, IL 60660</p><span class="small">Five units. Several opinions.</span></div>
 </aside>
 <div class="shell">
-    <header class="topbar"><span class="small">1262 Bryn Mawr Association <span class="muted">/ Resident portal</span></span><div class="account"><span class="avatar">{{ mb_substr(auth()->user()->name, 0, 1) }}</span><span>{{ auth()->user()->name }}<small>Unit {{ auth()->user()->household?->unit_id }}{{ auth()->user()->is_admin ? ' · Administrator' : '' }}</small></span><form method="post" action="{{ route('logout') }}">@csrf<button class="text-button">Sign out</button></form></div></header>
+    <header class="topbar"><span class="small">1262 Bryn Mawr Association <span class="muted">/ Resident portal</span></span><div class="account"><span class="avatar">{{ mb_substr(auth()->user()->name, 0, 1) }}</span><span>{{ auth()->user()->name }}<small>Unit {{ auth()->user()->household?->unit_id }}{{ auth()->user()->is_admin ? ' · Administrator' : '' }}</small></span>@if(config('services.google.client_id') && !auth()->user()->google_id)<a class="small" href="{{ route('google.link') }}">Link Google</a>@endif<form method="post" action="{{ route('logout') }}">@csrf<button class="text-button">Sign out</button></form></div></header>
 @else
 <div class="guest-shell">
 @endauth

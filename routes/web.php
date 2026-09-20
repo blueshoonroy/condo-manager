@@ -2,6 +2,8 @@
 
 use App\Http\Controllers\AdminController;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\GoogleAuthController;
+use App\Http\Controllers\PlaidController;
 use App\Http\Controllers\PortalController;
 use App\Http\Controllers\ReconciliationController;
 use App\Http\Middleware\ActiveResident;
@@ -9,12 +11,15 @@ use App\Http\Middleware\Administrator;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware('guest')->group(function () {
+    Route::get('/auth/google', [GoogleAuthController::class, 'redirect'])->middleware('throttle:10,1')->name('google.redirect');
     Route::view('/login', 'auth.login')->name('login');
     Route::post('/login', [AuthController::class, 'requestCode'])->middleware('throttle:5,1')->name('login.send');
     Route::view('/login/verify', 'auth.verify')->name('login.verify');
     Route::post('/login/verify', [AuthController::class, 'verify'])->middleware('throttle:10,1')->name('login.check');
 });
+Route::get('/auth/google/callback', [GoogleAuthController::class, 'callback'])->middleware('throttle:20,1')->name('google.callback');
 Route::middleware(['auth', ActiveResident::class])->group(function () {
+    Route::get('/auth/google/link', [GoogleAuthController::class, 'redirect'])->middleware('throttle:10,1')->name('google.link');
     Route::get('/', [PortalController::class, 'dashboard'])->name('dashboard');
     Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
     Route::get('/invoices', [PortalController::class, 'invoices'])->name('invoices');
@@ -24,6 +29,12 @@ Route::middleware(['auth', ActiveResident::class])->group(function () {
     Route::view('/documents', 'documents')->name('documents');
     Route::middleware(Administrator::class)->prefix('admin')->group(function () {
         Route::get('/', [AdminController::class, 'index'])->name('admin');
+        Route::get('/bank/connect', [PlaidController::class, 'index'])->name('admin.bank');
+        Route::post('/bank/link-token', [PlaidController::class, 'linkToken'])->middleware('throttle:5,1,plaid-link')->name('admin.bank.link');
+        Route::post('/bank/exchange', [PlaidController::class, 'exchange'])->middleware('throttle:5,1,plaid-exchange')->name('admin.bank.exchange');
+        Route::post('/bank/account', [PlaidController::class, 'select'])->name('admin.bank.select');
+        Route::post('/bank/sync', [PlaidController::class, 'sync'])->middleware('throttle:2,5,plaid-sync')->name('admin.bank.sync');
+        Route::post('/bank/disconnect', [PlaidController::class, 'disconnect'])->name('admin.bank.disconnect');
         Route::post('/imports', [AdminController::class, 'preview'])->name('admin.preview');
         Route::get('/imports/{batch}', [AdminController::class, 'import'])->whereNumber('batch')->name('admin.import');
         Route::post('/imports/{batch}', [AdminController::class, 'commit'])->whereNumber('batch')->name('admin.commit');

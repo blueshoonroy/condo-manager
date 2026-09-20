@@ -18,7 +18,7 @@ class PortalController extends Controller
         $unitId = $request->user()->household->unit_id;
         $dues = DB::table('dues_rates')->where('unit_id', $unitId)->where('effective_on', '<=', now('America/Chicago')->toDateString())->orderByDesc('effective_on')->value('amount_cents');
 
-        return view('dashboard', ['invoices' => $invoices->take(5), 'outstanding' => $outstanding, 'dues' => $dues, 'finance' => $finance->snapshot(), 'transactions' => DB::table('bank_transactions')->orderByDesc('posted_on')->orderByDesc('id')->limit(5)->get()]);
+        return view('dashboard', ['invoices' => $invoices->take(5), 'outstanding' => $outstanding, 'dues' => $dues, 'finance' => $finance->snapshot(), 'transactions' => DB::table('bank_transactions')->whereNull('removed_at')->orderByDesc('posted_on')->orderByDesc('id')->limit(5)->get()]);
     }
 
     public function invoices(Request $request): View

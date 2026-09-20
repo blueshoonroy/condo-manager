@@ -105,7 +105,7 @@ class AdminController extends Controller
     {
         $household = Household::findOrFail($household);
         $invoices = Invoice::where('household_id', $household->id)->orderBy('due_on')->get()->filter(fn ($i) => $i->balanceCents() > 0);
-        $credits = DB::table('bank_transactions')->where('amount_cents', '>', 0)->whereNotIn('id', DB::table('payments')->whereNotNull('bank_transaction_id')->select('bank_transaction_id'))->orderByDesc('posted_on')->get();
+        $credits = DB::table('bank_transactions')->whereNull('removed_at')->where('review_required', false)->where('amount_cents', '>', 0)->whereNotIn('id', DB::table('payments')->whereNotNull('bank_transaction_id')->select('bank_transaction_id'))->orderByDesc('posted_on')->get();
 
         return view('admin.payment', compact('household', 'invoices', 'credits'));
     }
@@ -217,6 +217,9 @@ class AdminController extends Controller
         }
         DB::transaction(function () use ($user, $data) {
             $data['email'] = strtolower($data['email']);
+            if ($user->email !== $data['email']) {
+                $user->forceFill(['google_id' => null]);
+            }
             $user->update($data);
             DB::table('sessions')->where('user_id', $user->id)->delete();
             DB::table('login_challenges')->where('user_id', $user->id)->update(['used_at' => now()]);

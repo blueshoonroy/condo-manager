@@ -31,6 +31,7 @@ class CsvImporter
                 throw new \InvalidArgumentException('CSV headers do not match the expected export.');
             }
             $records = [];
+            $plaidStart = $kind === 'bank' ? DB::table('plaid_connections')->where('environment', 'production')->value('starts_on') : null;
             $errors = [];
             $rowNumber = 1;
             while (($values = fgetcsv($handle, 0, ',', '"', '')) !== false) {
@@ -54,6 +55,9 @@ class CsvImporter
                             throw new \InvalidArgumentException('Invalid reference, currency, or credit/debit amount.');
                         }
                         $record = ['reference' => $reference, 'posted_on' => $this->date($row['POSTED DATE'], 'm/d/Y'), 'description' => trim($row['DESCRIPTION']), 'amount_cents' => $amount];
+                        if (str_starts_with($reference, 'plaid:') || ($plaidStart && $record['posted_on'] >= $plaidStart)) {
+                            throw new \InvalidArgumentException('Plaid manages transactions from '.$plaidStart.'. CSVs must end before the handoff date.');
+                        }
                         if (isset($records[$reference]) && $records[$reference] !== $record) {
                             throw new \InvalidArgumentException('Conflicting duplicate bank reference.');
                         }
