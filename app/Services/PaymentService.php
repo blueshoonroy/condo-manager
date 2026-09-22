@@ -9,6 +9,37 @@ use Illuminate\Validation\ValidationException;
 
 class PaymentService
 {
+    public const METHODS = ['zelle' => 'Zelle', 'check' => 'Check', 'cash' => 'Cash', 'bank_transfer' => 'Bank transfer', 'other' => 'Other'];
+
+    public function markInvoicePaid(int $invoiceId, int $expectedBalance, string $paidOn, string $method, string $note, string $requestKey, int $actor): int
+    {
+        return DB::transaction(function () use ($invoiceId, $expectedBalance, $paidOn, $method, $note, $requestKey, $actor) {
+            DB::table('units')->orderBy('id')->lockForUpdate()->get();
+            $invoice = Invoice::whereKey($invoiceId)->lockForUpdate()->firstOrFail();
+            $existing = DB::table('payments')->where('request_key', $requestKey)->first();
+            if ($existing) {
+                if ($existing->reversed_at || ! DB::table('payment_allocations')->where('payment_id', $existing->id)->where('invoice_id', $invoiceId)->exists()) {
+                    $this->fail('This payment request has already been used. Reload the invoice before recording a payment.');
+                }
+
+                return $existing->id;
+            }
+            $balance = $invoice->balanceCents();
+            if ($invoice->void_reason || $balance <= 0) {
+                $this->fail('This invoice is already paid or void. No payment was recorded.');
+            }
+            if ($balance !== $expectedBalance) {
+                $this->fail('The invoice balance changed. Reload it and review the remaining amount before marking it paid.');
+            }
+
+            return $this->record([
+                'household_id' => $invoice->household_id, 'request_key' => $requestKey,
+                'amount_cents' => $balance, 'paid_on' => $paidOn, 'payment_method' => $method, 'note' => $note,
+                'allocations' => [$invoice->id => $balance],
+            ], $actor);
+        });
+    }
+
     public function record(array $data, int $actor): int
     {
         return DB::transaction(function () use ($data, $actor) {
@@ -43,6 +74,7 @@ class PaymentService
             $id = DB::table('payments')->insertGetId([
                 'household_id' => $data['household_id'], 'bank_transaction_id' => $data['bank_transaction_id'] ?? null,
                 'request_key' => $data['request_key'], 'amount_cents' => $data['amount_cents'], 'paid_on' => $data['paid_on'], 'note' => $data['note'],
+                'payment_method' => $data['payment_method'] ?? null,
                 'user_id' => $actor, 'created_at' => now(), 'updated_at' => now(),
             ]);
             foreach ($allocations as $invoiceId => $amount) {

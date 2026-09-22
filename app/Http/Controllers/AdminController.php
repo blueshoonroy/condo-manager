@@ -16,6 +16,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
@@ -126,6 +127,19 @@ class AdminController extends Controller
         $service->record($data, $request->user()->id);
 
         return redirect()->route('admin')->with('status', 'Payment recorded. Any unallocated amount remains household credit.');
+    }
+
+    public function markPaid(Request $request, int $invoice, PaymentService $service): RedirectResponse
+    {
+        $data = $request->validate([
+            'request_key' => 'required|uuid', 'expected_balance' => 'required|integer|min:1',
+            'payment_method' => ['required', Rule::in(array_keys(PaymentService::METHODS))],
+            'paid_on' => 'required|date_format:Y-m-d|before_or_equal:'.now('America/Chicago')->toDateString(),
+            'note' => 'required|string|min:3|max:1000',
+        ]);
+        $service->markInvoicePaid($invoice, (int) $data['expected_balance'], $data['paid_on'], $data['payment_method'], $data['note'], $data['request_key'], $request->user()->id);
+
+        return redirect()->route('invoice', $invoice)->with('status', 'Invoice marked paid. A manual payment was recorded for its remaining balance.');
     }
 
     public function allocationForm(int $payment): View

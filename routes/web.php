@@ -34,6 +34,7 @@ Route::middleware(['auth', ActiveResident::class])->group(function () {
     Route::get('/services', [BuildingServiceController::class, 'index'])->name('services');
     Route::middleware(Administrator::class)->prefix('admin')->group(function () {
         Route::get('/', [AdminController::class, 'index'])->name('admin');
+        Route::post('/invoices/{invoice}/mark-paid', [AdminController::class, 'markPaid'])->whereNumber('invoice')->name('admin.invoice.mark-paid');
         Route::post('/invoice-emails/preview', [InvoiceEmailController::class, 'preview'])->name('admin.invoice-emails.preview');
         Route::post('/invoice-emails/send', [InvoiceEmailController::class, 'send'])->middleware('throttle:5,1,invoice-emails')->name('admin.invoice-emails.send');
         Route::post('/impersonate/{user}', [ImpersonationController::class, 'start'])->whereNumber('user')->name('admin.impersonate');

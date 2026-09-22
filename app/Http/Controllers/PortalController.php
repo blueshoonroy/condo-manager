@@ -35,7 +35,7 @@ class PortalController extends Controller
     public function invoice(Request $request, int $invoice): View
     {
         $invoice = Invoice::visibleTo($request->user())->with('household')->findOrFail($invoice);
-        $payments = DB::table('payment_allocations')->join('payments', 'payments.id', '=', 'payment_allocations.payment_id')->where('invoice_id', $invoice->id)->whereNull('reversed_at')->select('payments.paid_on', 'payment_allocations.amount_cents')->get();
+        $payments = DB::table('payment_allocations')->join('payments', 'payments.id', '=', 'payment_allocations.payment_id')->where('invoice_id', $invoice->id)->whereNull('reversed_at')->select('payments.paid_on', 'payments.payment_method', 'payment_allocations.amount_cents')->get();
 
         return view('invoice', compact('invoice', 'payments'));
     }
