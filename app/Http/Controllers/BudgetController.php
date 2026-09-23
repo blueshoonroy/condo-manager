@@ -12,9 +12,12 @@ use Illuminate\View\View;
 
 class BudgetController extends Controller
 {
-    public function index(Request $request, BudgetReport $formatter): View
+    public function index(Request $request, BudgetReport $formatter): View|RedirectResponse
     {
         $request->validate(['year' => 'nullable|integer|between:2000,2099', 'workbook' => 'nullable|integer']);
+        if (! $request->filled('workbook') && $request->input('mode') !== 'archive' && (! $request->filled('year') || $request->integer('year') >= 2026)) {
+            return redirect()->route('budget.live', ['year' => $request->integer('year', now('America/Chicago')->year)]);
+        }
         $workbooks = DB::table('budget_workbooks')->select('id', 'filename', 'created_at')->orderByDesc('id')->get();
         $workbook = $request->filled('workbook') ? DB::table('budget_workbooks')->find($request->integer('workbook')) : DB::table('budget_workbooks')->latest('id')->first();
         abort_if($request->filled('workbook') && ! $workbook, 404);

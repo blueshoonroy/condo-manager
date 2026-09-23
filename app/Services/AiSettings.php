@@ -9,7 +9,7 @@ use Illuminate\Validation\ValidationException;
 
 class AiSettings
 {
-    public const MODELS = ['openai' => 'gpt-4.1-mini', 'anthropic' => 'claude-haiku-4-5-20251001'];
+    public const MODELS = ['openai' => 'gpt-6-sol', 'anthropic' => 'claude-haiku-4-5-20251001'];
 
     public function publicSettings(): array
     {

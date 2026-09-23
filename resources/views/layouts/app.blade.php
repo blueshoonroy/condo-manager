@@ -16,7 +16,7 @@
     <div class="nav-label">YOUR COMMUNITY</div>
     <nav aria-label="Main navigation">
         @foreach(['dashboard' => ['◫', 'Overview'], 'invoices' => ['▤', 'Invoices'], 'finances' => ['↗', 'Association finances'], 'budget' => ['▦', 'Budget'], 'directory' => ['◎', 'Resident directory'], 'services' => ['⚒', 'Building services'], 'documents' => ['▱', 'Documents']] as $route => [$icon, $label])
-        <a href="{{ route($route) }}" class="{{ request()->routeIs($route, $route === 'invoices' ? 'invoice' : $route) ? 'selected' : '' }}"><span aria-hidden="true">{{ $icon }}</span>{{ $label }}</a>
+        <a href="{{ route($route) }}" class="{{ request()->routeIs($route, $route === 'invoices' ? 'invoice' : ($route === 'budget' ? 'budget.*' : $route)) ? 'selected' : '' }}"><span aria-hidden="true">{{ $icon }}</span>{{ $label }}</a>
         @endforeach
         @if(auth()->user()->is_admin)<div class="nav-label">MANAGEMENT</div><a class="{{ request()->routeIs('admin*') ? 'selected' : '' }}" href="{{ route('admin') }}"><span aria-hidden="true">⚙</span>Administration</a>@endif
     </nav>

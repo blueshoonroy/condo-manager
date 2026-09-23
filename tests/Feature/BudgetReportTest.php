@@ -115,7 +115,7 @@ class BudgetReportTest extends TestCase
         $id = app(BudgetWorkbookImporter::class)->import($this->workbook(), 'Budget.xlsx');
         $this->get('/budget')->assertRedirect('/login');
         $this->get('/budget/workbooks/'.$id)->assertRedirect('/login');
-        $this->actingAs(User::factory()->create())->get('/budget')->assertOk()->assertSee('2025 annual report')->assertSee('$10.12')->assertSee('pre-paid')->assertSee('Supporting bank records')->assertSee('Actual expenses &amp; cash flow', false)->assertDontSee('<script>alert(1)</script>', false);
+        $this->actingAs(User::factory()->create())->get('/budget?mode=archive')->assertOk()->assertSee('2025 annual report')->assertSee('$10.12')->assertSee('pre-paid')->assertSee('Supporting bank records')->assertSee('Actual expenses &amp; cash flow', false)->assertDontSee('<script>alert(1)</script>', false);
         $this->get('/budget?year=2020')->assertNotFound();
         $this->get('/budget?workbook=99999')->assertNotFound();
         $this->get('/budget/workbooks/'.$id)->assertOk()->assertHeader('Cache-Control', 'no-store, private');

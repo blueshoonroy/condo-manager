@@ -14,7 +14,7 @@ class ReconcileBankTransactions implements ShouldQueue
 
     public int $tries = 1;
 
-    public int $timeout = 55;
+    public int $timeout = 110;
 
     public function __construct(public int $runId) {}
 

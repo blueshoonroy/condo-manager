@@ -2,6 +2,7 @@
 @section('title', 'Budget')
 @section('content')
 <div class="budget-report">
+<p class="no-print"><a href="{{ route('budget.live') }}">← Live budget</a> · Workbook archive</p>
 <div class="page-heading"><div><span class="eyebrow">THE NUMBERS HAVE ENTERED THE CHAT</span><h1>Building budget</h1><p class="muted">What we planned. What we spent. Where the dollars went.</p></div>@if($workbook)<button class="button secondary no-print" data-print>Print report</button>@endif</div>
 @if($workbook)
 <nav class="settings-tabs no-print" aria-label="Budget year">@foreach($years as $option)<a href="{{ route('budget', ['year' => $option, 'workbook' => $workbook->id]) }}" @if($option === $year) aria-current="page" @endif>{{ $option }}</a>@endforeach</nav>
