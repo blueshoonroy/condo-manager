@@ -58,7 +58,7 @@ class ImpersonationTest extends TestCase
         }
     }
 
-    public function test_inactive_former_and_admin_accounts_cannot_be_impersonated(): void
+    public function test_inactive_former_and_self_accounts_cannot_be_impersonated(): void
     {
         $admin = User::factory()->create(['is_admin' => true]);
         $disabled = User::factory()->create(['active' => false]);

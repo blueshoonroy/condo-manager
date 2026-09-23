@@ -6,7 +6,7 @@
 @if(config('services.plaid.environment') === 'sandbox')<div class="notice"><strong>Sandbox test mode.</strong> Test balances and transactions stay on this admin page. They never affect association finances or invoice reconciliation. Real BMO access requires Plaid Production credentials.</div>@endif
 @if($error)<div class="notice error">{{ $error }}</div>@endif
 <section class="card" id="plaid-connect" data-link-url="{{ route('admin.bank.link') }}" data-exchange-url="{{ route('admin.bank.exchange') }}" data-sync-url="{{ route('admin.bank.sync') }}" data-resume-token="{{ $resumeToken }}" data-resume-update="{{ $resumeUpdate ? '1' : '0' }}">
-<h2>Association bank account</h2><p class="small muted">Only Roy can connect or disconnect the bank. The portal requests read access to balances and transactions, not payment transfers.</p>
+<h2>Association bank account</h2><p class="small muted">All active residents can connect or disconnect the bank. The portal requests read access to balances and transactions, not payment transfers.</p>
 <p id="plaid-message" role="status"></p>
 @if(!$connection || !$connection->access_token)
 <button class="button" type="button" data-plaid-open data-update="0">Connect bank with Plaid</button>

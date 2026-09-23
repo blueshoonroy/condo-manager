@@ -26,6 +26,7 @@ class UserFactory extends Factory
     public function definition(): array
     {
         return [
+            'is_admin' => false,
             'household_id' => Household::factory(),
             'name' => fake()->name(),
             'email' => fake()->unique()->safeEmail(),

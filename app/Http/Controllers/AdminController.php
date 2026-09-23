@@ -230,10 +230,17 @@ class AdminController extends Controller
     {
         $request->merge(['email' => strtolower(trim((string) $request->input('email')))]);
         $data = $request->validate(['name' => 'required|string|max:255', 'email' => 'required|email|max:254|unique:users,email,'.$user->id, 'phone' => 'nullable|string|max:40', 'active' => 'required|boolean']);
-        if ($user->is_admin && ! $data['active']) {
-            throw ValidationException::withMessages(['active' => 'The sole administrator cannot be disabled.']);
+        if ($user->id === $request->user()->id && ! $data['active']) {
+            throw ValidationException::withMessages(['active' => 'You cannot disable your own account.']);
         }
         DB::transaction(function () use ($user, $data) {
+            User::orderBy('id')->lockForUpdate()->get();
+            if (! $data['active'] && ! User::whereKeyNot($user->id)->where('active', true)->where('is_admin', true)->whereHas('household', fn ($query) => $query->where('active', true))->exists()) {
+                throw ValidationException::withMessages(['active' => 'At least one active administrator must remain.']);
+            }
+            if ($data['active']) {
+                $data['is_admin'] = true;
+            }
             $data['email'] = strtolower($data['email']);
             if ($user->email !== $data['email']) {
                 $user->forceFill(['google_id' => null]);

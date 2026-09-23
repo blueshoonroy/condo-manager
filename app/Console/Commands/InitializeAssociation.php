@@ -57,7 +57,7 @@ class InitializeAssociation extends Command
                     DB::table('dues_rates')->insert(['unit_id' => $unitId, 'effective_on' => now('America/Chicago')->startOfMonth()->toDateString(), 'amount_cents' => $entry['dues_cents'], 'created_at' => now(), 'updated_at' => now()]);
                 }
                 foreach ($entry['residents'] as $resident) {
-                    User::create(['name' => $resident['name'], 'email' => strtolower($resident['email']), 'password' => Str::random(64), 'household_id' => $household->id, 'active' => $active, 'is_admin' => $resident['is_admin'] ?? false]);
+                    User::create(['name' => $resident['name'], 'email' => strtolower($resident['email']), 'password' => Str::random(64), 'household_id' => $household->id, 'active' => $active, 'is_admin' => $active]);
                 }
             }
         });

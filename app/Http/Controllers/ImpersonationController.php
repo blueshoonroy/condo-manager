@@ -11,7 +11,7 @@ class ImpersonationController extends Controller
 {
     public function start(Request $request, User $user): RedirectResponse
     {
-        abort_unless($user->active && ! $user->is_admin && $user->household?->active, 422, 'Choose an active resident account.');
+        abort_unless($user->active && $user->id !== $request->user()->id && $user->household?->active, 422, 'Choose another active resident account.');
         Audit::record('impersonation.started', 'user:'.$user->id, [], $request->user()->id);
         $request->session()->forget(['google_login', 'state', 'plaid_link_token', 'plaid_link_expires', 'plaid_link_update']);
         $request->session()->put('impersonated_user_id', $user->id);

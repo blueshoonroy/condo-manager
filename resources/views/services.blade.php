@@ -21,6 +21,6 @@
 @endforeach
 </div>
 @empty
-<section class="card empty">The building's little black book is waiting for its first entry. Roy can add utilities and vendors in Administration &rarr; Building services.</section>
+<section class="card empty">The building's little black book is waiting for its first entry. Any resident can add utilities and vendors in Administration &rarr; Building services.</section>
 @endforelse
 @endsection

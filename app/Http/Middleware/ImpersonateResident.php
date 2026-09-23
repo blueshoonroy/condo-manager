@@ -27,7 +27,7 @@ class ImpersonateResident
         if ($request->routeIs('impersonation.stop', 'logout')) {
             return $next($request);
         }
-        $resident = User::whereKey($target)->where('active', true)->where('is_admin', false)->whereHas('household', fn ($query) => $query->where('active', true))->first();
+        $resident = User::whereKey($target)->where('active', true)->whereHas('household', fn ($query) => $query->where('active', true))->first();
         if (! $resident) {
             $request->session()->forget('impersonated_user_id');
 
