@@ -50,8 +50,8 @@ class ReconciliationController extends Controller
 
     public function review(Request $request, int $suggestion, ReconciliationService $service): RedirectResponse
     {
-        $data = $request->validate(['decision' => 'required|in:approve,reject']);
-        $service->review($suggestion, $data['decision'] === 'approve', $request->user()->id);
+        $data = $request->validate(['decision' => 'required|in:approve,reject', 'acknowledge_existing' => 'nullable|boolean']);
+        $service->review($suggestion, $data['decision'] === 'approve', $request->user()->id, $request->boolean('acknowledge_existing'));
 
         return back()->with('status', $data['decision'] === 'approve' ? 'Match approved and payment recorded.' : 'Suggestion rejected. No payment recorded.');
     }

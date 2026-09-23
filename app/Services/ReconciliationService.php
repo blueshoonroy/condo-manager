@@ -37,9 +37,11 @@ class ReconciliationService
                     'id' => $invoice->id, 'number' => $invoice->number, 'household_id' => $invoice->household_id,
                     'unit' => $invoice->unit_id, 'household' => $invoice->household->client_name,
                     'resident_names' => $invoice->household->residents->pluck('name')->all(),
-                    'issued_on' => $invoice->issued_on->toDateString(), 'due_on' => $invoice->due_on->toDateString(), 'balance_cents' => $invoice->balanceCents(),
+                    'issued_on' => $invoice->issued_on->toDateString(), 'due_on' => $invoice->due_on->toDateString(),
+                    'total_cents' => (int) $invoice->total_cents, 'balance_cents' => $invoice->balanceCents(),
                 ])->values()->all(),
             ];
+            $snapshot = app(ReconciliationEvidence::class)->enrich($snapshot);
             $id = DB::table('reconciliation_runs')->insertGetId([
                 'user_id' => $actor, 'provider' => $provider, 'model' => AiSettings::MODELS[$provider], 'from_date' => $from, 'to_date' => $to,
                 'snapshot' => json_encode($snapshot, JSON_THROW_ON_ERROR), 'status' => 'queued', 'created_at' => now(), 'updated_at' => now(),
@@ -96,9 +98,12 @@ class ReconciliationService
                 foreach ($allocations as $invoiceId => $amount) {
                     $usedAmounts[$invoiceId] = ($usedAmounts[$invoiceId] ?? 0) + $amount;
                 }
+                $evidence = app(ReconciliationEvidence::class)->assess($snapshot, $bank, $allocations);
+                $levels = ['low' => 0, 'medium' => 1, 'high' => 2];
+                $confidence = $levels[$match['confidence']] <= $levels[$evidence['confidence_cap']] ? $match['confidence'] : $evidence['confidence_cap'];
                 DB::table('reconciliation_suggestions')->insert([
                     'run_id' => $runId, 'bank_transaction_id' => $bank['id'], 'household_id' => $household,
-                    'allocations' => json_encode($allocations), 'confidence' => $match['confidence'], 'reason' => $match['reason'],
+                    'allocations' => json_encode($allocations), 'confidence' => $confidence, 'reason' => $match['reason'],
                     'status' => 'pending', 'request_key' => (string) Str::uuid(), 'created_at' => now(), 'updated_at' => now(),
                 ]);
             }
@@ -106,9 +111,9 @@ class ReconciliationService
         });
     }
 
-    public function review(int $id, bool $approve, int $actor): void
+    public function review(int $id, bool $approve, int $actor, bool $acknowledgeExisting = false): void
     {
-        DB::transaction(function () use ($id, $approve, $actor) {
+        DB::transaction(function () use ($id, $approve, $actor, $acknowledgeExisting) {
             DB::table('units')->orderBy('id')->lockForUpdate()->get();
             $suggestion = DB::table('reconciliation_suggestions')->where('id', $id)->lockForUpdate()->first();
             abort_unless($suggestion, 404);
@@ -131,6 +136,16 @@ class ReconciliationService
                 }
                 if (! $bank || ! $originalBank || (int) $bank->amount_cents !== $originalBank['amount_cents'] || $bank->posted_on !== $originalBank['date']) {
                     throw ValidationException::withMessages(['match' => 'The bank transaction changed. Run reconciliation again.']);
+                }
+                $evidence = app(ReconciliationEvidence::class);
+                $liveSnapshot = $evidence->enrich(['transactions' => [$originalBank], 'invoices' => []]);
+                $existing = $evidence->possibleReceipts($snapshot, $originalBank, (int) $suggestion->household_id);
+                $current = $evidence->possibleReceipts($liveSnapshot, $originalBank, (int) $suggestion->household_id);
+                if (array_diff(array_map(fn ($receipt) => $receipt['source'].':'.$receipt['id'], $current), array_map(fn ($receipt) => $receipt['source'].':'.$receipt['id'], $existing))) {
+                    throw ValidationException::withMessages(['match' => 'A similar payment was recorded since this preview. Reject this suggestion and run reconciliation again to avoid counting it twice.']);
+                }
+                if ($current && ! $acknowledgeExisting) {
+                    throw ValidationException::withMessages(['match' => 'Review the possible existing payments and confirm this is a separate receipt before approving.']);
                 }
                 $paymentId = app(PaymentService::class)->record([
                     'household_id' => $suggestion->household_id, 'bank_transaction_id' => $bank->id, 'request_key' => $suggestion->request_key,
