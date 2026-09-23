@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AdminController;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\BudgetController;
 use App\Http\Controllers\BuildingServiceController;
 use App\Http\Controllers\GoogleAuthController;
 use App\Http\Controllers\ImpersonationController;
@@ -29,10 +30,13 @@ Route::middleware(['auth', ActiveResident::class])->group(function () {
     Route::get('/invoices', [PortalController::class, 'invoices'])->name('invoices');
     Route::get('/invoices/{invoice}', [PortalController::class, 'invoice'])->whereNumber('invoice')->name('invoice');
     Route::get('/finances', [PortalController::class, 'finances'])->name('finances');
+    Route::get('/budget', [BudgetController::class, 'index'])->name('budget');
+    Route::get('/budget/workbooks/{workbook}', [BudgetController::class, 'download'])->whereNumber('workbook')->name('budget.download');
     Route::get('/directory', [PortalController::class, 'directory'])->name('directory');
     Route::view('/documents', 'documents')->name('documents');
     Route::get('/services', [BuildingServiceController::class, 'index'])->name('services');
     Route::middleware(Administrator::class)->prefix('admin')->group(function () {
+        Route::post('/budget/import', [BudgetController::class, 'import'])->name('admin.budget.import');
         Route::get('/', [AdminController::class, 'index'])->name('admin');
         Route::post('/invoices/{invoice}/mark-paid', [AdminController::class, 'markPaid'])->whereNumber('invoice')->name('admin.invoice.mark-paid');
         Route::post('/invoice-emails/preview', [InvoiceEmailController::class, 'preview'])->name('admin.invoice-emails.preview');
