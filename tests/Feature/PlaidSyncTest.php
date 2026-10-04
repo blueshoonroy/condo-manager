@@ -51,6 +51,30 @@ class PlaidSyncTest extends TestCase
         ]);
     }
 
+    public function test_blocked_live_balance_falls_back_to_cached_balance_and_clears_the_error(): void
+    {
+        $id = $this->connection();
+        DB::table('plaid_connections')->where('id', $id)->update(['status' => 'error', 'error_code' => 'MFA_NOT_SUPPORTED']);
+        Http::swap(new Factory);
+        Http::preventStrayRequests();
+        Http::fake([
+            '*/transactions/sync' => Http::response($this->page([$this->transaction('credit')])),
+            '*/accounts/balance/get' => Http::response(['error_code' => 'MFA_NOT_SUPPORTED', 'error_type' => 'ITEM_ERROR'], 400),
+            '*/accounts/get' => Http::response(['accounts' => [['account_id' => 'account', 'balances' => ['current' => 9876.54, 'available' => 9000, 'iso_currency_code' => 'USD']]]]),
+        ]);
+        (new SyncPlaid(true))->handle(app(PlaidService::class));
+        $this->assertDatabaseHas('plaid_connections', ['id' => $id, 'balance_cents' => 987654, 'status' => 'connected', 'error_code' => null]);
+        $this->assertNotNull(DB::table('plaid_connections')->find($id)->balance_fetched_at);
+        Http::swap(new Factory);
+        Http::fake([
+            '*/transactions/sync' => Http::response($this->page(cursor: 'cursor-2')),
+            '*/accounts/balance/get' => Http::response(['error_code' => 'MFA_NOT_SUPPORTED'], 400),
+            '*/accounts/get' => Http::response(['error_code' => 'ITEM_LOGIN_REQUIRED'], 400),
+        ]);
+        (new SyncPlaid(true))->handle(app(PlaidService::class));
+        $this->assertDatabaseHas('plaid_connections', ['id' => $id, 'balance_cents' => 987654, 'status' => 'error', 'error_code' => 'MFA_NOT_SUPPORTED']);
+    }
+
     public function test_sandbox_data_never_enters_resident_finances(): void
     {
         $this->connection('sandbox');

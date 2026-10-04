@@ -173,7 +173,17 @@ class PlaidService
             DB::table('plaid_connections')->where('id', $connection->id)->update(['cursor' => $cursor, 'synced_at' => now(), 'status' => 'connected', 'error_code' => null, 'updated_at' => now()]);
         });
         if ($forceBalance || ! $connection->balance_fetched_at || now()->subHours(6)->gte($connection->balance_fetched_at)) {
-            $accounts = $this->request('accounts/balance/get', ['access_token' => $token, 'options' => ['account_ids' => [$connection->account_id]]]);
+            // Balance requests sign in to the bank live, which some logins block with MFA. Plaid's cached
+            // balance from the transaction refresh is the fallback, so a blocked live check never fails the sync.
+            try {
+                $accounts = $this->request('accounts/balance/get', ['access_token' => $token, 'options' => ['account_ids' => [$connection->account_id]]]);
+            } catch (\RuntimeException $liveBalanceError) {
+                try {
+                    $accounts = $this->request('accounts/get', ['access_token' => $token, 'options' => ['account_ids' => [$connection->account_id]]]);
+                } catch (\RuntimeException) {
+                    throw $liveBalanceError;
+                }
+            }
             $account = collect($accounts['accounts'])->firstWhere('account_id', $connection->account_id);
             if (! $account || ($account['balances']['iso_currency_code'] ?? null) !== 'USD') {
                 throw new \RuntimeException('ACCOUNT_NOT_AVAILABLE');
