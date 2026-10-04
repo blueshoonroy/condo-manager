@@ -31,7 +31,7 @@ class CsvImporter
                 throw new \InvalidArgumentException('CSV headers do not match the expected export.');
             }
             $records = [];
-            $plaidStart = $kind === 'bank' ? DB::table('plaid_connections')->where('environment', 'production')->value('starts_on') : null;
+            $claimed = [];
             $errors = [];
             $rowNumber = 1;
             while (($values = fgetcsv($handle, 0, ',', '"', '')) !== false) {
@@ -55,15 +55,26 @@ class CsvImporter
                             throw new \InvalidArgumentException('Invalid reference, currency, or credit/debit amount.');
                         }
                         $record = ['reference' => $reference, 'posted_on' => $this->date($row['POSTED DATE'], 'm/d/Y'), 'description' => trim($row['DESCRIPTION']), 'amount_cents' => $amount];
-                        if (str_starts_with($reference, 'plaid:') || ($plaidStart && $record['posted_on'] >= $plaidStart)) {
-                            throw new \InvalidArgumentException('Plaid manages transactions from '.$plaidStart.'. CSVs must end before the handoff date.');
+                        if (str_starts_with($reference, 'plaid:')) {
+                            throw new \InvalidArgumentException('Reserved bank reference.');
                         }
-                        if (isset($records[$reference]) && $records[$reference] !== $record) {
-                            throw new \InvalidArgumentException('Conflicting duplicate bank reference.');
+                        if (isset($records[$reference])) {
+                            if (array_diff_assoc($record, $records[$reference])) {
+                                throw new \InvalidArgumentException('Conflicting duplicate bank reference.');
+                            }
+
+                            continue;
                         }
                         $existing = DB::table('bank_transactions')->where('reference', $reference)->first();
                         if ($existing && ($existing->posted_on !== $record['posted_on'] || $existing->description !== $record['description'] || (int) $existing->amount_cents !== $amount)) {
                             throw new \InvalidArgumentException('This bank reference conflicts with an existing transaction.');
+                        }
+                        if (! $existing) {
+                            $matched = $this->plaidMatch($record, $claimed);
+                            if ($matched) {
+                                $claimed[] = $matched;
+                                $record['matched_bank_id'] = $matched;
+                            }
                         }
                         $records[$reference] = $record;
                     } else {
@@ -107,10 +118,11 @@ class CsvImporter
             $new = 0;
             $changed = 0;
             $unchanged = 0;
+            $matched = 0;
             foreach ($records as $record) {
                 $existing = $kind === 'bank' ? DB::table('bank_transactions')->where('reference', $record['reference'])->first() : Invoice::where('number', $record['number'])->first();
                 if (! $existing) {
-                    $new++;
+                    isset($record['matched_bank_id']) ? $matched++ : $new++;
                 } elseif ($kind === 'bank') {
                     $unchanged++;
                 } else {
@@ -128,7 +140,12 @@ class CsvImporter
                 }
             }
 
-            return ['records' => array_values($records), 'errors' => $errors, 'summary' => ['rows' => $rowNumber - 1, 'new' => $new, 'changed' => $changed, 'unchanged' => $unchanged, 'total_cents' => array_sum(array_column($records, $kind === 'bank' ? 'amount_cents' : 'total_cents'))]];
+            $summary = ['rows' => $rowNumber - 1, 'new' => $new, 'changed' => $changed, 'unchanged' => $unchanged, 'total_cents' => array_sum(array_column($records, $kind === 'bank' ? 'amount_cents' : 'total_cents'))];
+            if ($kind === 'bank') {
+                $summary['matched'] = $matched;
+            }
+
+            return ['records' => array_values($records), 'errors' => $errors, 'summary' => $summary];
         } catch (\InvalidArgumentException $error) {
             throw ValidationException::withMessages(['file' => $error->getMessage()]);
         } finally {
@@ -151,7 +168,8 @@ class CsvImporter
             }
             foreach ($result['records'] as $record) {
                 if ($batch->kind === 'bank') {
-                    if (! DB::table('bank_transactions')->where('reference', $record['reference'])->exists()) {
+                    // Rows Plaid already synced are left in place; the CSV only adds what the bank feed is missing.
+                    if (! isset($record['matched_bank_id']) && ! DB::table('bank_transactions')->where('reference', $record['reference'])->exists()) {
                         DB::table('bank_transactions')->insert($record + ['import_batch_id' => $batchId, 'created_at' => now(), 'updated_at' => now()]);
                     }
                 } else {
@@ -163,6 +181,24 @@ class CsvImporter
 
             return $result['summary'];
         });
+    }
+
+    /**
+     * Find a Plaid-synced bank row that is the same real transaction as a CSV row.
+     *
+     * BMO references and Plaid transaction ids never line up, so the match is the
+     * posting date plus the exact amount, one Plaid row per CSV row.
+     *
+     * @param  array{reference: string, posted_on: string, description: string, amount_cents: int}  $record
+     * @param  list<int>  $claimed
+     */
+    private function plaidMatch(array $record, array $claimed): ?int
+    {
+        $id = DB::table('bank_transactions')->where('source', 'plaid')->whereNull('removed_at')
+            ->where('posted_on', $record['posted_on'])->where('amount_cents', $record['amount_cents'])
+            ->whereNotIn('id', $claimed)->orderBy('id')->value('id');
+
+        return $id === null ? null : (int) $id;
     }
 
     private function date(string $value, string $format = 'Y-m-d'): string

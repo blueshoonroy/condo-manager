@@ -99,10 +99,6 @@ class PlaidService
             if ($connection->status !== 'select_account') {
                 throw ValidationException::withMessages(['bank' => 'An account has already been selected.']);
             }
-            $latest = DB::table('bank_transactions')->max('posted_on');
-            if ($connection->environment === 'production' && $latest && $startsOn <= $latest) {
-                throw ValidationException::withMessages(['starts_on' => 'Start after '.$latest.' to avoid duplicating existing bank history.']);
-            }
             DB::table('plaid_connections')->where('id', $connection->id)->update([
                 'account_id' => $account['account_id'], 'account_name' => $account['name'], 'mask' => $account['mask'],
                 'starts_on' => $startsOn, 'status' => 'connected', 'balance_cents' => null, 'available_cents' => null,
@@ -209,9 +205,11 @@ class PlaidService
                 if ($changed && DB::table('payments')->where('bank_transaction_id', $bankId)->exists()) {
                     $bankValues['review_required'] = true;
                 }
-                DB::table('bank_transactions')->where('id', $bankId)->update($bankValues);
+                // A CSV row is the bank's own statement of the transaction, so Plaid never rewrites it.
+                DB::table('bank_transactions')->where('id', $bankId)->where('source', 'plaid')->update($bankValues);
             } else {
-                $bankId = DB::table('bank_transactions')->insertGetId($bankValues + ['reference' => 'plaid:'.$connection->id.':'.$transaction['transaction_id'], 'source' => 'plaid', 'import_batch_id' => $batch, 'created_at' => now()]);
+                $bankId = $this->csvMatch($values['posted_on'], $values['amount_cents'])
+                    ?? DB::table('bank_transactions')->insertGetId($bankValues + ['reference' => 'plaid:'.$connection->id.':'.$transaction['transaction_id'], 'source' => 'plaid', 'import_batch_id' => $batch, 'created_at' => now()]);
             }
         } elseif ($bankId) {
             $this->retireBankRow($bankId);
@@ -219,9 +217,24 @@ class PlaidService
         DB::table('plaid_transactions')->updateOrInsert($key, $values + ['bank_transaction_id' => $bankId, 'created_at' => $old?->created_at ?? now()]);
     }
 
+    /**
+     * Find a CSV-imported bank row for the same real transaction that no Plaid transaction has claimed yet.
+     *
+     * Plaid transaction ids and BMO references never line up, so the match is the posting date plus the exact amount.
+     */
+    private function csvMatch(string $postedOn, int $amountCents): ?int
+    {
+        $id = DB::table('bank_transactions')->where('source', 'csv')->whereNull('removed_at')
+            ->where('posted_on', $postedOn)->where('amount_cents', $amountCents)
+            ->whereNotIn('id', DB::table('plaid_transactions')->whereNotNull('bank_transaction_id')->select('bank_transaction_id'))
+            ->orderBy('id')->value('id');
+
+        return $id === null ? null : (int) $id;
+    }
+
     private function retireBankRow(int $id): void
     {
-        DB::table('bank_transactions')->where('id', $id)->update([
+        DB::table('bank_transactions')->where('id', $id)->where('source', 'plaid')->update([
             'removed_at' => now(), 'review_required' => DB::table('payments')->where('bank_transaction_id', $id)->exists(), 'updated_at' => now(),
         ]);
     }

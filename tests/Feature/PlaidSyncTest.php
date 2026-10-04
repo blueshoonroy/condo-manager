@@ -123,18 +123,65 @@ class PlaidSyncTest extends TestCase
         app(PaymentService::class)->record(['household_id' => $user->household_id, 'bank_transaction_id' => $bank->id, 'amount_cents' => 43000, 'paid_on' => '2026-09-10', 'request_key' => (string) Str::uuid(), 'note' => 'Rejected'], $user->id);
     }
 
-    public function test_csv_cannot_overlap_plaid_handoff(): void
+    private function importCsv(string $rows): array
     {
-        $this->connection();
         $path = tempnam(sys_get_temp_dir(), 'plaid-csv');
-        file_put_contents($path, "POSTED DATE,DESCRIPTION,AMOUNT,CURRENCY,FI TRANSACTION REFERENCE,CREDIT/DEBIT\n09/01/2026,Dues,430.00,USD,REF1,Credit\n");
+        file_put_contents($path, "POSTED DATE,DESCRIPTION,AMOUNT,CURRENCY,FI TRANSACTION REFERENCE,CREDIT/DEBIT\n".$rows);
         try {
             $result = app(CsvImporter::class)->inspect($path, 'bank');
-            $this->assertNotEmpty($result['errors']);
-            $this->assertStringContainsString('handoff', implode(' ', $result['errors']));
+            $this->assertSame([], $result['errors']);
+            $batch = DB::table('import_batches')->insertGetId(['kind' => 'bank', 'filename' => 'test.csv', 'checksum' => hash_file('sha256', $path), 'status' => 'preview', 'user_id' => User::factory()->create(['is_admin' => true])->id, 'created_at' => now(), 'updated_at' => now()]);
+
+            return app(CsvImporter::class)->commit($batch, $path);
         } finally {
             unlink($path);
         }
+    }
+
+    public function test_csv_upload_overlapping_plaid_matches_synced_rows_instead_of_duplicating(): void
+    {
+        $this->connection();
+        $this->fakeSync($this->page([$this->transaction('a'), $this->transaction('b')]));
+        app(PlaidService::class)->sync();
+        $summary = $this->importCsv("09/10/2026,ZELLE FROM A,430.00,USD,REF1,Credit\n09/10/2026,ZELLE FROM B,430.00,USD,REF2,Credit\n09/10/2026,ZELLE FROM C,430.00,USD,REF3,Credit\n09/11/2026,FEE,-19.99,USD,REF4,Debit\n");
+        $this->assertSame(2, $summary['matched']);
+        $this->assertSame(2, $summary['new']);
+        $this->assertDatabaseCount('bank_transactions', 4);
+        $this->assertDatabaseHas('bank_transactions', ['reference' => 'REF3', 'source' => 'csv']);
+        $this->assertDatabaseMissing('bank_transactions', ['reference' => 'REF1']);
+        $again = $this->importCsv("09/10/2026,ZELLE FROM C,430.00,USD,REF3,Credit\n");
+        $this->assertSame(['new' => 0, 'matched' => 0, 'unchanged' => 1], ['new' => $again['new'], 'matched' => $again['matched'], 'unchanged' => $again['unchanged']]);
+        $this->assertDatabaseCount('bank_transactions', 4);
+    }
+
+    public function test_plaid_sync_links_to_csv_rows_already_uploaded_and_leaves_them_untouched(): void
+    {
+        $this->connection();
+        $this->importCsv("09/10/2026,ZELLE FROM A,430.00,USD,REF1,Credit\n09/10/2026,ZELLE FROM B,430.00,USD,REF2,Credit\n");
+        $this->fakeSync($this->page([$this->transaction('a'), $this->transaction('b'), $this->transaction('c')]));
+        app(PlaidService::class)->sync();
+        $this->assertDatabaseCount('bank_transactions', 3);
+        $this->assertSame(1, DB::table('bank_transactions')->where('source', 'plaid')->count());
+        $this->assertSame(0, DB::table('plaid_transactions')->whereNull('bank_transaction_id')->count());
+        $csv = DB::table('bank_transactions')->where('reference', 'REF1')->first();
+        $this->assertSame('ZELLE FROM A', $csv->description);
+        $this->fakeSync($this->page(removed: [['transaction_id' => 'a'], ['transaction_id' => 'b']], cursor: 'cursor-2'));
+        app(PlaidService::class)->sync();
+        $this->assertSame(0, DB::table('bank_transactions')->whereNotNull('removed_at')->count());
+    }
+
+    public function test_stale_plaid_balance_yields_to_csv_based_calculation(): void
+    {
+        $id = $this->connection();
+        $admin = User::factory()->create(['is_admin' => true]);
+        DB::table('balance_checkpoints')->insert(['as_of' => '2026-09-01', 'amount_cents' => 100000, 'note' => 'Statement', 'user_id' => $admin->id, 'created_at' => now(), 'updated_at' => now()]);
+        $this->importCsv("09/10/2026,ZELLE FROM A,430.00,USD,REF1,Credit\n");
+        DB::table('plaid_connections')->where('id', $id)->update(['balance_cents' => 555555, 'balance_fetched_at' => now()->subMinutes(5)]);
+        $this->assertSame(555555, app(FinanceService::class)->snapshot()['balance']);
+        DB::table('plaid_connections')->where('id', $id)->update(['status' => 'error', 'error_code' => 'MFA_NOT_SUPPORTED']);
+        $this->assertSame(143000, app(FinanceService::class)->snapshot()['balance']);
+        DB::table('plaid_connections')->where('id', $id)->update(['status' => 'connected', 'balance_fetched_at' => now()->subDays(2)]);
+        $this->assertSame(143000, app(FinanceService::class)->snapshot()['balance']);
     }
 
     public function test_link_exchange_and_account_selection_use_server_verified_accounts(): void
