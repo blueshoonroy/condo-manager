@@ -36,8 +36,14 @@ class PortalController extends Controller
     {
         $invoice = Invoice::visibleTo($request->user())->with('household')->findOrFail($invoice);
         $payments = DB::table('payment_allocations')->join('payments', 'payments.id', '=', 'payment_allocations.payment_id')->where('invoice_id', $invoice->id)->whereNull('reversed_at')->select('payments.paid_on', 'payments.payment_method', 'payment_allocations.amount_cents')->get();
+        $deposits = collect();
+        if ($request->user()->is_admin && ! $invoice->void_reason && $invoice->balanceCents() > 0) {
+            // Only unrecorded incoming deposits for exactly the remaining balance can be tied to this invoice.
+            $deposits = DB::table('bank_transactions')->whereNull('removed_at')->where('review_required', false)->where('amount_cents', $invoice->balanceCents())
+                ->whereNotIn('id', DB::table('payments')->whereNotNull('bank_transaction_id')->select('bank_transaction_id'))->orderByDesc('posted_on')->orderByDesc('id')->get();
+        }
 
-        return view('invoice', compact('invoice', 'payments'));
+        return view('invoice', compact('invoice', 'payments', 'deposits'));
     }
 
     public function finances(Request $request, FinanceService $finance): View

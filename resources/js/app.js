@@ -12,6 +12,17 @@ document.querySelector('#bank-credit')?.addEventListener('change', event => {
         document.querySelector('#payment-date').value = option.dataset.date;
     }
 });
+// Choosing a bank deposit locks the payment date to the day it posted.
+document.querySelectorAll('[data-deposit-date]').forEach(select => {
+    const date = document.getElementById(select.dataset.depositDate);
+    if (!date) return;
+    const original = date.value;
+    select.addEventListener('change', () => {
+        const option = select.selectedOptions[0];
+        date.value = option.dataset.date || original;
+        date.readOnly = Boolean(option.dataset.date);
+    });
+});
 
 const plaidPanel = document.querySelector('#plaid-connect');
 if (plaidPanel) {
@@ -65,7 +76,7 @@ if (invoiceSelection) {
     const update = () => {
         const count = boxes.filter(box => box.checked).length;
         invoiceSelection.querySelector('[data-invoice-count]').textContent = count + ' selected' + (count > 200 ? ' (maximum 200 per batch)' : '');
-        invoiceSelection.querySelector('[data-invoice-submit]').disabled = count === 0 || count > 200;
+        invoiceSelection.querySelectorAll('[data-invoice-submit]').forEach(button => { button.disabled = count === 0 || count > 200; });
         all.checked = boxes.length > 0 && count === boxes.length;
         all.indeterminate = count > 0 && count < boxes.length;
     };

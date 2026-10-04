@@ -12,6 +12,7 @@ use App\Support\Audit;
 use App\Support\Money;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
@@ -110,7 +111,7 @@ class AdminController extends Controller
     {
         $household = Household::findOrFail($household);
         $invoices = Invoice::where('household_id', $household->id)->orderBy('due_on')->get()->filter(fn ($i) => $i->balanceCents() > 0);
-        $credits = DB::table('bank_transactions')->whereNull('removed_at')->where('review_required', false)->where('amount_cents', '>', 0)->whereNotIn('id', DB::table('payments')->whereNotNull('bank_transaction_id')->select('bank_transaction_id'))->orderByDesc('posted_on')->get();
+        $credits = $this->unrecordedCredits();
 
         return view('admin.payment', compact('household', 'invoices', 'credits'));
     }
@@ -119,9 +120,10 @@ class AdminController extends Controller
     {
         $data = $request->validate([
             'household_id' => 'required|exists:households,id', 'request_key' => 'required|uuid', 'bank_transaction_id' => 'nullable|exists:bank_transactions,id',
-            'amount' => ['required', 'regex:/^\d{1,8}(\.\d{1,2})?$/'], 'paid_on' => 'required|date_format:Y-m-d|before_or_equal:today', 'note' => 'required|string|max:1000',
+            'amount' => ['required', 'regex:/^\d{1,8}(\.\d{1,2})?$/'], 'paid_on' => 'required|date_format:Y-m-d|before_or_equal:today', 'note' => 'nullable|string|max:1000',
             'allocations' => 'nullable|array', 'allocations.*' => ['nullable', 'regex:/^\d{1,8}(\.\d{1,2})?$/'],
         ]);
+        $data['note'] ??= '';
         $data['amount_cents'] = Money::cents($data['amount']);
         $data['allocations'] = array_map(fn ($amount) => $amount ? Money::cents($amount) : 0, $data['allocations'] ?? []);
         $service->record($data, $request->user()->id);
@@ -135,11 +137,48 @@ class AdminController extends Controller
             'request_key' => 'required|uuid', 'expected_balance' => 'required|integer|min:1',
             'payment_method' => ['required', Rule::in(array_keys(PaymentService::METHODS))],
             'paid_on' => 'required|date_format:Y-m-d|before_or_equal:'.now('America/Chicago')->toDateString(),
-            'note' => 'required|string|min:3|max:1000',
+            'note' => 'nullable|string|max:1000', 'bank_transaction_id' => 'nullable|integer|exists:bank_transactions,id',
         ]);
-        $service->markInvoicePaid($invoice, (int) $data['expected_balance'], $data['paid_on'], $data['payment_method'], $data['note'], $data['request_key'], $request->user()->id);
+        $service->markInvoicePaid($invoice, (int) $data['expected_balance'], $data['paid_on'], $data['payment_method'], $data['note'] ?? '', $data['request_key'], $request->user()->id, isset($data['bank_transaction_id']) ? (int) $data['bank_transaction_id'] : null);
 
-        return redirect()->route('invoice', $invoice)->with('status', 'Invoice marked paid. A manual payment was recorded for its remaining balance.');
+        return redirect()->route('invoice', $invoice)->with('status', 'Invoice marked paid. A payment was recorded for its remaining balance.');
+    }
+
+    public function bulkPaymentForm(Request $request): View
+    {
+        $data = $request->validate(['invoice_ids' => 'required|array|min:1|max:200', 'invoice_ids.*' => 'required|integer|distinct|exists:invoices,id']);
+        $selected = Invoice::with('household')->whereIn('id', $data['invoice_ids'])->orderBy('unit_id')->orderBy('due_on')->get();
+        $invoices = $selected->filter(fn ($invoice) => ! $invoice->void_reason && $invoice->balanceCents() > 0)->values();
+
+        return view('admin.bulk-payment', [
+            'invoices' => $invoices, 'skipped' => $selected->diff($invoices),
+            'credits' => $this->unrecordedCredits()->whereIn('amount_cents', $invoices->map(fn ($invoice) => $invoice->balanceCents())->unique()->all())->values(),
+        ]);
+    }
+
+    public function bulkPay(Request $request, PaymentService $service): RedirectResponse
+    {
+        $data = $request->validate([
+            'payments' => 'required|array|min:1|max:200',
+            'payments.*.invoice_id' => 'required|integer|distinct|exists:invoices,id', 'payments.*.expected_balance' => 'required|integer|min:1',
+            'payments.*.request_key' => 'required|uuid|distinct', 'payments.*.bank_transaction_id' => 'nullable|integer|distinct|exists:bank_transactions,id',
+            'payment_method' => ['required', Rule::in(array_keys(PaymentService::METHODS))],
+            'paid_on' => 'required|date_format:Y-m-d|before_or_equal:'.now('America/Chicago')->toDateString(),
+            'note' => 'nullable|string|max:1000',
+        ]);
+        $items = array_map(fn (array $payment) => [
+            'invoice_id' => (int) $payment['invoice_id'], 'expected_balance' => (int) $payment['expected_balance'], 'request_key' => $payment['request_key'],
+            'bank_transaction_id' => ! empty($payment['bank_transaction_id']) ? (int) $payment['bank_transaction_id'] : null,
+        ], array_values($data['payments']));
+        $count = $service->markInvoicesPaid($items, $data['paid_on'], $data['payment_method'], $data['note'] ?? '', $request->user()->id);
+
+        return redirect()->route('invoices', ['status' => 'outstanding'])->with('status', $count.' '.Str::plural('invoice', $count).' marked paid. Reverse any mistake under Administration > Payments.');
+    }
+
+    private function unrecordedCredits(): Collection
+    {
+        return DB::table('bank_transactions')->whereNull('removed_at')->where('review_required', false)->where('amount_cents', '>', 0)
+            ->whereNotIn('id', DB::table('payments')->whereNotNull('bank_transaction_id')->select('bank_transaction_id'))->orderByDesc('posted_on')->orderByDesc('id')->get();
     }
 
     public function allocationForm(int $payment): View

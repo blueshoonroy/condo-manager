@@ -11,9 +11,14 @@ class PaymentService
 {
     public const METHODS = ['zelle' => 'Zelle', 'check' => 'Check', 'cash' => 'Cash', 'bank_transfer' => 'Bank transfer', 'other' => 'Other'];
 
-    public function markInvoicePaid(int $invoiceId, int $expectedBalance, string $paidOn, string $method, string $note, string $requestKey, int $actor): int
+    /**
+     * Record the remaining balance of one invoice as paid, optionally tied to an incoming bank deposit.
+     *
+     * When a deposit is chosen its posted date becomes the payment date, and it must match the balance exactly.
+     */
+    public function markInvoicePaid(int $invoiceId, int $expectedBalance, string $paidOn, string $method, string $note, string $requestKey, int $actor, ?int $bankTransactionId = null): int
     {
-        return DB::transaction(function () use ($invoiceId, $expectedBalance, $paidOn, $method, $note, $requestKey, $actor) {
+        return DB::transaction(function () use ($invoiceId, $expectedBalance, $paidOn, $method, $note, $requestKey, $actor, $bankTransactionId) {
             DB::table('units')->orderBy('id')->lockForUpdate()->get();
             $invoice = Invoice::whereKey($invoiceId)->lockForUpdate()->firstOrFail();
             $existing = DB::table('payments')->where('request_key', $requestKey)->first();
@@ -31,12 +36,46 @@ class PaymentService
             if ($balance !== $expectedBalance) {
                 $this->fail('The invoice balance changed. Reload it and review the remaining amount before marking it paid.');
             }
+            if ($bankTransactionId) {
+                $deposit = DB::table('bank_transactions')->where('id', $bankTransactionId)->first();
+                if (! $deposit || (int) $deposit->amount_cents !== $balance) {
+                    $this->fail('Choose a bank deposit that matches the remaining invoice balance, or record a partial payment instead.');
+                }
+                $paidOn = $deposit->posted_on;
+            }
 
             return $this->record([
-                'household_id' => $invoice->household_id, 'request_key' => $requestKey,
+                'household_id' => $invoice->household_id, 'request_key' => $requestKey, 'bank_transaction_id' => $bankTransactionId,
                 'amount_cents' => $balance, 'paid_on' => $paidOn, 'payment_method' => $method, 'note' => $note,
                 'allocations' => [$invoice->id => $balance],
             ], $actor);
+        });
+    }
+
+    /**
+     * Mark several invoices paid in one step, each with its own payment for its remaining balance.
+     *
+     * Everything succeeds or nothing is recorded, so a bad row never leaves a half-applied batch.
+     *
+     * @param  list<array{invoice_id: int, expected_balance: int, request_key: string, bank_transaction_id: int|null}>  $items
+     */
+    public function markInvoicesPaid(array $items, string $paidOn, string $method, string $note, int $actor): int
+    {
+        return DB::transaction(function () use ($items, $paidOn, $method, $note, $actor) {
+            DB::table('units')->orderBy('id')->lockForUpdate()->get();
+            $count = 0;
+            foreach ($items as $item) {
+                $invoice = Invoice::find($item['invoice_id']);
+                try {
+                    $this->markInvoicePaid($item['invoice_id'], $item['expected_balance'], $paidOn, $method, $note, $item['request_key'], $actor, $item['bank_transaction_id'] ?? null);
+                } catch (ValidationException $exception) {
+                    $this->fail('Invoice #'.($invoice?->number ?? $item['invoice_id']).': '.implode(' ', $exception->errors()['payment'] ?? ['The payment could not be recorded.']));
+                }
+                $count++;
+            }
+            Audit::record('payments.bulk_recorded', 'invoices:'.$count, ['invoice_ids' => array_column($items, 'invoice_id')], $actor);
+
+            return $count;
         });
     }
 

@@ -64,6 +64,24 @@ class MarkInvoicePaidTest extends TestCase
         $this->assertDatabaseCount('payments', 1);
     }
 
+    public function test_note_is_optional_and_a_matching_deposit_can_be_tied_to_the_invoice(): void
+    {
+        $admin = User::factory()->create(['is_admin' => true]);
+        $invoice = Invoice::factory()->create();
+        $batch = DB::table('import_batches')->insertGetId(['kind' => 'bank', 'filename' => 'test', 'checksum' => str_repeat('a', 64)]);
+        $deposit = DB::table('bank_transactions')->insertGetId(['reference' => 'dep', 'posted_on' => '2026-09-28', 'description' => 'ZELLE FROM RESIDENT', 'amount_cents' => 43000, 'import_batch_id' => $batch]);
+        DB::table('bank_transactions')->insert(['reference' => 'small', 'posted_on' => '2026-09-28', 'description' => 'ZELLE PARTIAL', 'amount_cents' => 10000, 'import_batch_id' => $batch]);
+        $this->actingAs($admin)->get('/invoices/'.$invoice->id)->assertOk()->assertSee('Bank deposit (optional)')->assertSee('ZELLE FROM RESIDENT')->assertDontSee('ZELLE PARTIAL');
+        $data = $this->payment();
+        unset($data['note']);
+        $this->post('/admin/invoices/'.$invoice->id.'/mark-paid', $data + ['bank_transaction_id' => $deposit])->assertRedirect('/invoices/'.$invoice->id);
+        $this->assertDatabaseHas('payments', ['amount_cents' => 43000, 'bank_transaction_id' => $deposit, 'paid_on' => '2026-09-28', 'note' => '']);
+        $this->assertSame('paid', $invoice->fresh()->status());
+        $other = Invoice::factory()->create();
+        $this->post('/admin/invoices/'.$other->id.'/mark-paid', $this->payment() + ['bank_transaction_id' => $deposit])->assertSessionHasErrors('payment');
+        $this->assertDatabaseCount('payments', 1);
+    }
+
     public function test_payment_method_and_non_future_date_are_required(): void
     {
         $invoice = Invoice::factory()->create();
