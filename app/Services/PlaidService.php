@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Support\Audit;
 use App\Support\Money;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -11,6 +12,11 @@ use Illuminate\Validation\ValidationException;
 
 class PlaidService
 {
+    /**
+     * Hours without a successful Plaid refresh from the bank before the feed counts as stalled.
+     */
+    public const STALE_AFTER_HOURS = 48;
+
     public function request(string $endpoint, array $data = []): array
     {
         $environment = config('services.plaid.environment');
@@ -102,7 +108,7 @@ class PlaidService
             DB::table('plaid_connections')->where('id', $connection->id)->update([
                 'account_id' => $account['account_id'], 'account_name' => $account['name'], 'mask' => $account['mask'],
                 'starts_on' => $startsOn, 'status' => 'connected', 'balance_cents' => null, 'available_cents' => null,
-                'balance_fetched_at' => null, 'synced_at' => null, 'updated_at' => now(),
+                'balance_fetched_at' => null, 'live_balance_error' => null, 'data_updated_at' => null, 'synced_at' => null, 'updated_at' => now(),
             ]);
             Audit::record('bank.account_selected', 'connection:'.$connection->id, ['starts_on' => $startsOn], $actor);
         });
@@ -172,17 +178,21 @@ class PlaidService
             }
             DB::table('plaid_connections')->where('id', $connection->id)->update(['cursor' => $cursor, 'synced_at' => now(), 'status' => 'connected', 'error_code' => null, 'updated_at' => now()]);
         });
+        $this->recordBankStatus($connection, $token);
         if ($forceBalance || ! $connection->balance_fetched_at || now()->subHours(6)->gte($connection->balance_fetched_at)) {
             // Balance requests sign in to the bank live, which some logins block with MFA. Plaid's cached
-            // balance from the transaction refresh is the fallback, so a blocked live check never fails the sync.
+            // balance from the transaction refresh is the fallback, so a blocked live check never fails the sync,
+            // but the failure is kept so the balance is labelled as cached rather than live.
+            $liveBalanceError = null;
             try {
                 $accounts = $this->request('accounts/balance/get', ['access_token' => $token, 'options' => ['account_ids' => [$connection->account_id]]]);
-            } catch (\RuntimeException $liveBalanceError) {
+            } catch (\RuntimeException $liveBalanceFailure) {
                 try {
                     $accounts = $this->request('accounts/get', ['access_token' => $token, 'options' => ['account_ids' => [$connection->account_id]]]);
                 } catch (\RuntimeException) {
-                    throw $liveBalanceError;
+                    throw $liveBalanceFailure;
                 }
+                $liveBalanceError = $liveBalanceFailure->getMessage();
             }
             $account = collect($accounts['accounts'])->firstWhere('account_id', $connection->account_id);
             if (! $account || ($account['balances']['iso_currency_code'] ?? null) !== 'USD') {
@@ -191,8 +201,35 @@ class PlaidService
             DB::table('plaid_connections')->where('id', $connection->id)->where('access_token', $connection->access_token)->update([
                 'balance_cents' => $account['balances']['current'] === null ? null : $this->cents($account['balances']['current']),
                 'available_cents' => $account['balances']['available'] === null ? null : $this->cents($account['balances']['available']),
-                'balance_fetched_at' => now(), 'updated_at' => now(),
+                'balance_fetched_at' => now(), 'live_balance_error' => $liveBalanceError, 'updated_at' => now(),
             ]);
+        }
+    }
+
+    /**
+     * Whether Plaid has gone too long without pulling new data from the bank.
+     */
+    public function bankDataIsStale(object $connection): bool
+    {
+        return ! $connection->data_updated_at || now()->subHours(self::STALE_AFTER_HOURS)->gte($connection->data_updated_at);
+    }
+
+    /**
+     * Record when Plaid last pulled transactions from the bank, and surface any error Plaid holds for the login.
+     *
+     * A transaction sync still succeeds, with nothing new, while Plaid's own bank refreshes are stalled,
+     * so this timestamp is the only way to tell a quiet account from a feed that has stopped.
+     */
+    private function recordBankStatus(object $connection, string $token): void
+    {
+        $item = $this->request('item/get', ['access_token' => $token]);
+        $updatedAt = $item['status']['transactions']['last_successful_update'] ?? null;
+        DB::table('plaid_connections')->where('id', $connection->id)->where('access_token', $connection->access_token)->update([
+            'data_updated_at' => is_string($updatedAt) ? Carbon::parse($updatedAt)->utc()->toDateTimeString() : null, 'updated_at' => now(),
+        ]);
+        $itemError = $item['item']['error']['error_code'] ?? null;
+        if ($itemError !== null) {
+            throw new \RuntimeException(is_string($itemError) && preg_match('/^[A-Z_]{1,80}$/D', $itemError) ? $itemError : 'PLAID_ITEM_ERROR');
         }
     }
 

@@ -30,6 +30,8 @@ class PlaidController extends Controller
         return view('admin.bank', [
             'connection' => $connection, 'accounts' => $accounts, 'error' => $error,
             'latest' => DB::table('bank_transactions')->max('posted_on'),
+            'latestFromPlaid' => $connection ? DB::table('plaid_transactions')->where('connection_id', $connection->id)->where('removed', false)->max('posted_on') : null,
+            'bankDataStale' => $connection?->synced_at !== null && $plaid->bankDataIsStale($connection),
             'sandboxTransactions' => $connection && $connection->environment === 'sandbox' ? DB::table('plaid_transactions')->where('connection_id', $connection->id)->where('removed', false)->orderByDesc('posted_on')->limit(15)->get() : collect(),
             'reviews' => DB::table('bank_transactions')->where('review_required', true)->get(),
             'resumeToken' => $request->has('oauth_state_id') && $request->session()->get('plaid_link_expires', 0) > now()->timestamp ? $request->session()->get('plaid_link_token') : null,

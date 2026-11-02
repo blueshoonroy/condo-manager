@@ -41,14 +41,82 @@ class PlaidSyncTest extends TestCase
         return ['added' => $added, 'modified' => $modified, 'removed' => $removed, 'next_cursor' => $cursor, 'has_more' => $more];
     }
 
-    private function fakeSync(array $page): void
+    private function item(?string $updatedAt = null, ?string $errorCode = null): array
+    {
+        return ['item' => ['item_id' => 'item', 'error' => $errorCode ? ['error_code' => $errorCode, 'error_type' => 'ITEM_ERROR'] : null], 'status' => ['transactions' => ['last_successful_update' => $updatedAt ?? now()->subHour()->toIso8601ZuluString(), 'last_failed_update' => null]]];
+    }
+
+    private function fakeSync(array $page, ?array $item = null): void
     {
         Http::swap(new Factory);
         Http::preventStrayRequests();
         Http::fake([
             '*/transactions/sync' => Http::response($page),
+            '*/item/get' => Http::response($item ?? $this->item()),
             '*/accounts/balance/get' => Http::response(['accounts' => [['account_id' => 'account', 'balances' => ['current' => 12345.67, 'available' => 12000, 'iso_currency_code' => 'USD']]]]),
         ]);
+    }
+
+    private function checkpoint(int $amountCents = 100000): void
+    {
+        DB::table('balance_checkpoints')->insert(['as_of' => '2026-09-01', 'amount_cents' => $amountCents, 'note' => 'Statement', 'user_id' => User::factory()->create(['is_admin' => true])->id, 'created_at' => now(), 'updated_at' => now()]);
+    }
+
+    public function test_stalled_bank_feed_is_flagged_and_its_balance_is_not_trusted(): void
+    {
+        $id = $this->connection();
+        $this->checkpoint();
+        $stalledSince = now()->subDays(3)->startOfSecond();
+        $this->fakeSync($this->page([$this->transaction('credit')]), $this->item($stalledSince->toIso8601ZuluString()));
+        app(PlaidService::class)->sync();
+        $this->assertDatabaseHas('plaid_connections', ['id' => $id, 'status' => 'connected', 'error_code' => null, 'data_updated_at' => $stalledSince->toDateTimeString()]);
+        $snapshot = app(FinanceService::class)->snapshot();
+        $this->assertSame(143000, $snapshot['balance']);
+        $this->assertStringContainsString('need attention', $snapshot['bank_notice']);
+        $admin = User::factory()->create(['is_admin' => true]);
+        $this->actingAs($admin)->get('/admin/bank/connect')->assertOk()
+            ->assertSee('Plaid has not received new data from the bank since '.$stalledSince->toDateTimeString().' UTC')
+            ->assertSee('Newest transaction from Plaid: 2026-09-10');
+
+        $this->fakeSync($this->page(cursor: 'cursor-2'));
+        app(PlaidService::class)->sync(true);
+        $this->assertSame(1234567, app(FinanceService::class)->snapshot()['balance']);
+        $this->get('/admin/bank/connect')->assertOk()->assertDontSee('Plaid has not received new data');
+    }
+
+    public function test_cached_balance_is_labelled_until_a_live_balance_check_succeeds(): void
+    {
+        $id = $this->connection();
+        $updatedAt = now()->subHours(5)->startOfSecond();
+        Http::swap(new Factory);
+        Http::preventStrayRequests();
+        Http::fake([
+            '*/transactions/sync' => Http::response($this->page()),
+            '*/item/get' => Http::response($this->item($updatedAt->toIso8601ZuluString())),
+            '*/accounts/balance/get' => Http::response(['error_code' => 'MFA_NOT_SUPPORTED', 'error_type' => 'ITEM_ERROR'], 400),
+            '*/accounts/get' => Http::response(['accounts' => [['account_id' => 'account', 'balances' => ['current' => 9876.54, 'available' => 9000, 'iso_currency_code' => 'USD']]]]),
+        ]);
+        app(PlaidService::class)->sync(true);
+        $this->assertDatabaseHas('plaid_connections', ['id' => $id, 'balance_cents' => 987654, 'live_balance_error' => 'MFA_NOT_SUPPORTED']);
+        $snapshot = app(FinanceService::class)->snapshot();
+        $this->assertSame(987654, $snapshot['balance']);
+        $this->assertSame('Bank balance as of Plaid\'s last bank update, '.$updatedAt->timezone('America/Chicago')->format('M j, g:i a T'), $snapshot['balance_caption']);
+        $this->actingAs(User::factory()->create(['is_admin' => true]))->get('/admin/bank/connect')->assertOk()->assertSee('The live balance check failed (MFA_NOT_SUPPORTED)');
+
+        $this->fakeSync($this->page(cursor: 'cursor-2'));
+        app(PlaidService::class)->sync(true);
+        $this->assertDatabaseHas('plaid_connections', ['id' => $id, 'balance_cents' => 1234567, 'live_balance_error' => null]);
+        $this->assertStringStartsWith('Bank balance fetched ', app(FinanceService::class)->snapshot()['balance_caption']);
+    }
+
+    public function test_plaid_login_error_is_surfaced_after_transactions_import(): void
+    {
+        $id = $this->connection();
+        $this->fakeSync($this->page([$this->transaction('credit')]), $this->item(errorCode: 'ITEM_LOGIN_REQUIRED'));
+        (new SyncPlaid(true))->handle(app(PlaidService::class));
+        $this->assertDatabaseCount('bank_transactions', 1);
+        $this->assertDatabaseHas('plaid_connections', ['id' => $id, 'cursor' => 'cursor-1', 'status' => 'needs_login', 'error_code' => 'ITEM_LOGIN_REQUIRED']);
+        $this->assertNotNull(DB::table('plaid_connections')->find($id)->data_updated_at);
     }
 
     public function test_blocked_live_balance_falls_back_to_cached_balance_and_clears_the_error(): void
@@ -59,15 +127,18 @@ class PlaidSyncTest extends TestCase
         Http::preventStrayRequests();
         Http::fake([
             '*/transactions/sync' => Http::response($this->page([$this->transaction('credit')])),
+            '*/item/get' => Http::response($this->item()),
             '*/accounts/balance/get' => Http::response(['error_code' => 'MFA_NOT_SUPPORTED', 'error_type' => 'ITEM_ERROR'], 400),
             '*/accounts/get' => Http::response(['accounts' => [['account_id' => 'account', 'balances' => ['current' => 9876.54, 'available' => 9000, 'iso_currency_code' => 'USD']]]]),
         ]);
         (new SyncPlaid(true))->handle(app(PlaidService::class));
-        $this->assertDatabaseHas('plaid_connections', ['id' => $id, 'balance_cents' => 987654, 'status' => 'connected', 'error_code' => null]);
+        $this->assertDatabaseHas('plaid_connections', ['id' => $id, 'balance_cents' => 987654, 'status' => 'connected', 'error_code' => null, 'live_balance_error' => 'MFA_NOT_SUPPORTED']);
         $this->assertNotNull(DB::table('plaid_connections')->find($id)->balance_fetched_at);
         Http::swap(new Factory);
+        Http::preventStrayRequests();
         Http::fake([
             '*/transactions/sync' => Http::response($this->page(cursor: 'cursor-2')),
+            '*/item/get' => Http::response($this->item()),
             '*/accounts/balance/get' => Http::response(['error_code' => 'MFA_NOT_SUPPORTED'], 400),
             '*/accounts/get' => Http::response(['error_code' => 'ITEM_LOGIN_REQUIRED'], 400),
         ]);
@@ -197,14 +268,15 @@ class PlaidSyncTest extends TestCase
     public function test_stale_plaid_balance_yields_to_csv_based_calculation(): void
     {
         $id = $this->connection();
-        $admin = User::factory()->create(['is_admin' => true]);
-        DB::table('balance_checkpoints')->insert(['as_of' => '2026-09-01', 'amount_cents' => 100000, 'note' => 'Statement', 'user_id' => $admin->id, 'created_at' => now(), 'updated_at' => now()]);
+        $this->checkpoint();
         $this->importCsv("09/10/2026,ZELLE FROM A,430.00,USD,REF1,Credit\n");
-        DB::table('plaid_connections')->where('id', $id)->update(['balance_cents' => 555555, 'balance_fetched_at' => now()->subMinutes(5)]);
+        DB::table('plaid_connections')->where('id', $id)->update(['balance_cents' => 555555, 'balance_fetched_at' => now()->subMinutes(5), 'data_updated_at' => now()->subHour()]);
         $this->assertSame(555555, app(FinanceService::class)->snapshot()['balance']);
         DB::table('plaid_connections')->where('id', $id)->update(['status' => 'error', 'error_code' => 'MFA_NOT_SUPPORTED']);
         $this->assertSame(143000, app(FinanceService::class)->snapshot()['balance']);
         DB::table('plaid_connections')->where('id', $id)->update(['status' => 'connected', 'balance_fetched_at' => now()->subDays(2)]);
+        $this->assertSame(143000, app(FinanceService::class)->snapshot()['balance']);
+        DB::table('plaid_connections')->where('id', $id)->update(['balance_fetched_at' => now()->subMinutes(5), 'data_updated_at' => now()->subHours(PlaidService::STALE_AFTER_HOURS + 1)]);
         $this->assertSame(143000, app(FinanceService::class)->snapshot()['balance']);
     }
 
@@ -232,7 +304,8 @@ class PlaidSyncTest extends TestCase
         $this->fakeSync($this->page([$this->transaction('pending', pending: true)]));
         app(PlaidService::class)->sync();
         Http::swap(new Factory);
-        Http::fake(['*/transactions/sync' => Http::sequence()
+        Http::preventStrayRequests();
+        Http::fake(['*/item/get' => Http::response($this->item()), '*/transactions/sync' => Http::sequence()
             ->push($this->page([$this->transaction('posted')], cursor: 'page-2', more: true))
             ->push($this->page(removed: [['transaction_id' => 'pending']], cursor: 'page-3'))]);
         app(PlaidService::class)->sync();
