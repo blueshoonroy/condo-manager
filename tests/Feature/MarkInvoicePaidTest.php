@@ -78,6 +78,8 @@ class MarkInvoicePaidTest extends TestCase
         $this->assertDatabaseHas('payments', ['amount_cents' => 43000, 'bank_transaction_id' => $deposit, 'paid_on' => '2026-09-28', 'note' => '']);
         $this->assertSame('paid', $invoice->fresh()->status());
         $other = Invoice::factory()->create();
+        $this->get('/invoices/'.$other->id)->assertOk()->assertSee('ZELLE FROM RESIDENT')->assertSee('Already matched to '.$invoice->number)
+            ->assertSee('No unrecorded deposits match this balance yet.');
         $this->post('/admin/invoices/'.$other->id.'/mark-paid', $this->payment() + ['bank_transaction_id' => $deposit])->assertSessionHasErrors('payment');
         $this->assertDatabaseCount('payments', 1);
     }
